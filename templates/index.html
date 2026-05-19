@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flask Web Server</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Running</div>
+      <h1>Flask Web Server</h1>
+      <p class="subtitle">Your Python server is up and running.</p>
+    </header>
+
+    <section class="endpoints">
+      <h2>Available Endpoints</h2>
+      <ul>
+        <li>
+          <span class="method get">GET</span>
+          <code>/</code>
+          <span class="desc">This page</span>
+        </li>
+        <li>
+          <span class="method get">GET</span>
+          <code>/health</code>
+          <span class="desc">Health check — returns status and timestamp</span>
+        </li>
+        <li>
+          <span class="method get">GET</span>
+          <code>/api/hello?name=Alice</code>
+          <span class="desc">Returns a greeting</span>
+        </li>
+        <li>
+          <span class="method post">POST</span>
+          <code>/api/echo</code>
+          <span class="desc">Echoes back any JSON body you send</span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="try-it">
+      <h2>Try it</h2>
+      <div class="card">
+        <p class="label">Health check</p>
+        <button id="btn-health">GET /health</button>
+        <pre id="output-health" class="output"></pre>
+      </div>
+      <div class="card">
+        <p class="label">Hello endpoint</p>
+        <div class="row">
+          <input id="name-input" type="text" placeholder="Your name" value="World" />
+          <button id="btn-hello">GET /api/hello</button>
+        </div>
+        <pre id="output-hello" class="output"></pre>
+      </div>
+      <div class="card">
+        <p class="label">Echo endpoint</p>
+        <textarea id="echo-input" rows="3">{"key": "value"}</textarea>
+        <button id="btn-echo">POST /api/echo</button>
+        <pre id="output-echo" class="output"></pre>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
