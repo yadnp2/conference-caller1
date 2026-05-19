@@ -1,0 +1,7 @@
+vonage
+flask
+gspread
+google-auth
+werkzeug
+schedule
+requests
