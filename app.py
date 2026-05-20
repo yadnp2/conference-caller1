@@ -908,19 +908,19 @@ def recording_audio():
 @login_required
 def recording_toggle():
     set_record_enabled(not get_record_enabled())
-    return redirect("/status")
+    return jsonify({"ok": True, "value": get_record_enabled()})
 
 @app.route("/replay/toggle", methods=["POST"])
 @login_required
 def replay_toggle():
     set_replay_enabled(not get_replay_enabled())
-    return redirect("/status")
+    return jsonify({"ok": True, "value": get_replay_enabled()})
 
 @app.route("/announcements/toggle", methods=["POST"])
 @login_required
 def announcements_toggle():
     set_announcements_enabled(not get_announcements_enabled())
-    return redirect("/status")
+    return jsonify({"ok": True, "value": get_announcements_enabled()})
 
 # ── Call History Page ─────────────────────────────────────────────────────────
 
@@ -986,44 +986,45 @@ def history():
 @app.route("/numbers/add", methods=["POST"])
 @login_required
 def numbers_add():
-    n    = _clean(request.form.get("number", ""))
-    name = request.form.get("name", "").strip()
+    n    = _clean(request.form.get("number", "") or (request.json or {}).get("number", ""))
+    name = (request.form.get("name", "") or (request.json or {}).get("name", "")).strip()
     if n:
         add_number(n, name)
-    return redirect("/status")
+        return jsonify({"ok": True, "numbers": get_numbers()})
+    return jsonify({"ok": False, "error": "Invalid number"}), 400
 
 @app.route("/numbers/remove", methods=["POST"])
 @login_required
 def numbers_remove():
-    n = request.form.get("number", "").strip()
+    n = (request.form.get("number", "") or (request.json or {}).get("number", "")).strip()
     if n:
         remove_number(n)
-    return redirect("/status")
+    return jsonify({"ok": True, "numbers": get_numbers()})
 
 @app.route("/numbers/pause", methods=["POST"])
 @login_required
 def numbers_pause():
-    n = request.form.get("number", "").strip()
+    n = (request.form.get("number", "") or (request.json or {}).get("number", "")).strip()
     if n:
         pause_number(n, True)
-    return redirect("/status")
+    return jsonify({"ok": True, "numbers": get_numbers()})
 
 @app.route("/numbers/unpause", methods=["POST"])
 @login_required
 def numbers_unpause():
-    n = request.form.get("number", "").strip()
+    n = (request.form.get("number", "") or (request.json or {}).get("number", "")).strip()
     if n:
         pause_number(n, False)
-    return redirect("/status")
+    return jsonify({"ok": True, "numbers": get_numbers()})
 
 @app.route("/numbers/setname", methods=["POST"])
 @login_required
 def numbers_setname():
-    n    = request.form.get("number", "").strip()
-    name = request.form.get("name", "").strip()
+    n    = (request.form.get("number", "") or (request.json or {}).get("number", "")).strip()
+    name = (request.form.get("name", "") or (request.json or {}).get("name", "")).strip()
     if n:
         set_number_name(n, name)
-    return redirect("/status")
+    return jsonify({"ok": True, "numbers": get_numbers()})
 
 # ── Schedule routes ───────────────────────────────────────────────────────────
 
@@ -1031,26 +1032,28 @@ def numbers_setname():
 @login_required
 def schedule_add():
     try:
-        day    = int(request.form["day"])
-        time_s = request.form.get("time", "22:45")
+        data   = request.json or {}
+        day    = int(request.form.get("day", data.get("day", 0)))
+        time_s = request.form.get("time", data.get("time", "22:45"))
         hour, minute = [int(x) for x in time_s.split(":")]
         if 0 <= day <= 6 and 0 <= hour <= 23 and 0 <= minute <= 59:
             add_schedule_entry(day, hour, minute)
     except (KeyError, ValueError):
         pass
-    return redirect("/status")
+    return jsonify({"ok": True, "schedule": load_schedule()})
 
 @app.route("/schedule/remove", methods=["POST"])
 @login_required
 def schedule_remove():
     try:
-        day    = int(request.form["day"])
-        hour   = int(request.form["hour"])
-        minute = int(request.form["minute"])
+        data   = request.json or {}
+        day    = int(request.form.get("day",    data.get("day",    0)))
+        hour   = int(request.form.get("hour",   data.get("hour",   0)))
+        minute = int(request.form.get("minute", data.get("minute", 0)))
         remove_schedule_entry(day, hour, minute)
     except (KeyError, ValueError):
         pass
-    return redirect("/status")
+    return jsonify({"ok": True, "schedule": load_schedule()})
 
 # ── Reading / Book routes ─────────────────────────────────────────────────────
 
@@ -1058,33 +1061,33 @@ def schedule_remove():
 @login_required
 def reading_toggle():
     set_reading_enabled(not get_reading_enabled())
-    return redirect("/status")
+    return jsonify({"ok": True, "value": get_reading_enabled()})
 
 @app.route("/book/upload", methods=["POST"])
 @login_required
 def book_upload():
     f = request.files.get("book")
     if not f:
-        return redirect("/status")
+        return jsonify({"ok": False, "error": "No file"}), 400
     title = request.form.get("title", f.filename).strip()
     lpp   = int(request.form.get("lines_per_portion", 30))
     text  = f.read().decode("utf-8", errors="replace")
     count = upload_book(text, title=title, lines_per_portion=lpp)
     print(f"Book '{title}' uploaded — {count} portions")
-    return redirect("/status")
+    return jsonify({"ok": True, "count": count})
 
 @app.route("/book/advance", methods=["POST"])
 @login_required
 def book_advance():
     advance_reading()
-    return redirect("/status")
+    return jsonify({"ok": True})
 
 @app.route("/book/remove", methods=["POST"])
 @login_required
 def book_remove():
     with book_lock:
         save_book({"portions": [], "current_index": 0, "title": ""})
-    return redirect("/status")
+    return jsonify({"ok": True})
 
 # ── Trigger ───────────────────────────────────────────────────────────────────
 
@@ -1093,9 +1096,9 @@ def book_remove():
 def trigger():
     with log_lock:
         if last_run["running"]:
-            return ("A conference is already in progress.", 409)
+            return jsonify({"ok": False, "error": "Already running"}), 409
     threading.Thread(target=start_conference, daemon=True).start()
-    return redirect("/status")
+    return jsonify({"ok": True})
 
 # ── Root ──────────────────────────────────────────────────────────────────────
 
@@ -1103,6 +1106,42 @@ def trigger():
 @login_required
 def root():
     return redirect("/status")
+
+# ── API state endpoint (used by AJAX to refresh page sections) ────────────────
+
+@app.route("/api/state")
+@login_required
+def api_state():
+    with log_lock:
+        run_time = last_run["time"]
+        calls    = list(last_run["calls"])
+        running  = last_run["running"]
+    with vote_lock:
+        voted     = len(reading_session["votes"])
+        expected  = len(reading_session["expected"])
+        triggered = reading_session["triggered"]
+    rec_meta  = load_recording_meta()
+    rec_exists = os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
+    book = load_book()
+    return jsonify({
+        "running":               running,
+        "run_time":              run_time,
+        "calls":                 calls,
+        "numbers":               get_numbers(),
+        "schedule":              load_schedule(),
+        "reading_enabled":       get_reading_enabled(),
+        "record_enabled":        get_record_enabled(),
+        "replay_enabled":        get_replay_enabled(),
+        "announcements_enabled": get_announcements_enabled(),
+        "voted":                 voted,
+        "expected":              expected,
+        "triggered":             triggered,
+        "rec_meta":              rec_meta,
+        "rec_exists":            rec_exists,
+        "book_title":            book.get("title", ""),
+        "book_total":            len(book.get("portions", [])),
+        "book_index":            book.get("current_index", 0),
+    })
 
 # ── PWA ───────────────────────────────────────────────────────────────────────
 
@@ -1123,170 +1162,16 @@ def service_worker():
 
 # ── Status page ───────────────────────────────────────────────────────────────
 
-STATUS_ICONS = {
-    "connected":  ("✅", "#4ade80"),
-    "voicemail":  ("📵", "#fb923c"),
-    "dialing":    ("⏳", "#facc15"),
-    "busy":       ("🔴", "#f87171"),
-    "unanswered": ("🔕", "#94a3b8"),
-    "timeout":    ("🔕", "#94a3b8"),
-    "failed":     ("❌", "#f87171"),
-    "error":      ("❌", "#f87171"),
-}
-
 @app.route("/status")
 @login_required
 def status():
-    with log_lock:
-        run_time = last_run["time"]
-        calls    = list(last_run["calls"])
-        running  = last_run["running"]
-
-    with vote_lock:
-        voted     = len(reading_session["votes"])
-        expected  = len(reading_session["expected"])
-        triggered = reading_session["triggered"]
-
-    reading_on = get_reading_enabled()
-    numbers    = get_numbers()
-    book       = load_book()
-    portions   = book.get("portions", [])
-    book_title = book.get("title", "")
-    book_idx   = book.get("current_index", 0)
-    book_total = len(portions)
-
     raw = FROM_NUMBER.lstrip("1") if FROM_NUMBER.startswith("1") else FROM_NUMBER
     dial_in_fmt = (f"({raw[0:3]}) {raw[3:6]}-{raw[6:10]}" if len(raw) >= 10 else FROM_NUMBER)
-
-    if not run_time:
-        run_body = "<p class='muted'>No conference has run yet since the server started.</p>"
-    else:
-        rows = ""
-        for c in calls:
-            s = c.get("status", "unknown")
-            icon, color = STATUS_ICONS.get(s, ("❓", "#94a3b8"))
-            name = c.get("name", "")
-            label = f"<span class='cname'>{name}</span>" if name else ""
-            err  = f"<span class='err'>({c['error']})</span>" if c.get("error") else ""
-            rows += (f"<li><span class='icon'>{icon}</span>"
-                     f"<span class='num'>{c['number']}</span>{label}"
-                     f"<span class='stat' style='color:{color}'>{s}</span>{err}</li>")
-        total     = len(calls)
-        connected = sum(1 for c in calls if c.get("status") == "connected")
-        badge     = "<span class='live'>● Live</span>" if running else ""
-        run_body  = f"""
-        <div class='summary'>
-          <span class='muted'>Last run: {run_time} {badge}</span>
-          <span class='counts'>{connected}/{total} connected</span>
-        </div>
-        <ul class='calls'>{rows}</ul>
-        <a href='/history' style='font-size:.8rem;color:#6366f1;display:block;margin-top:.5rem'>View full call history →</a>"""
-
-    num_rows = ""
-    for r in numbers:
-        n, name, is_paused = r["number"], r["name"], r["paused"]
-        pause_tag    = "<span class='tag paused'>Paused</span>" if is_paused else ""
-        disp         = name if name else "<span class='muted'>No name</span>"
-        li_cls       = "num-paused" if is_paused else ""
-        pause_action = "/numbers/unpause" if is_paused else "/numbers/pause"
-        pause_label  = "Resume" if is_paused else "Pause"
-        pause_cls    = "unpause-btn" if is_paused else "pause-btn"
-        num_rows += f"""
-        <li class='{li_cls}'>
-          <div class='num-info'><span class='num'>{n}</span>{pause_tag}<span class='nname'>{disp}</span></div>
-          <div class='num-actions'>
-            <form method='POST' action='/numbers/setname' style='display:flex;gap:.35rem'>
-              <input type='hidden' name='number' value='{n}'/>
-              <input type='text' name='name' class='name-input' value='{name}' placeholder='Name'/>
-              <button class='save-btn'>Save</button>
-            </form>
-            <form method='POST' action='{pause_action}'>
-              <input type='hidden' name='number' value='{n}'/>
-              <button class='{pause_cls}'>{pause_label}</button>
-            </form>
-            <form method='POST' action='/numbers/remove'>
-              <input type='hidden' name='number' value='{n}'/>
-              <button class='rm-btn' onclick="return confirm('Remove {n}?')">✕</button>
-            </form>
-          </div>
-        </li>"""
-    if not num_rows:
-        num_rows = "<li class='muted' style='border:none;background:none;padding:.5rem 0'>No numbers yet.</li>"
-
-    toggle_label = "Auto-Read: On" if reading_on else "Auto-Read: Off"
-    toggle_cls   = "toggle-on" if reading_on else "toggle-off"
-    toggle_hint  = "Participants vote by pressing 1. If all vote yes, the reading plays automatically." if reading_on else "Auto-read is disabled."
-    reading_toggle_html = f"""
-        <div class='toggle-row'>
-          <form method='POST' action='/reading/toggle'>
-            <button class='toggle-btn {toggle_cls}'>{toggle_label}</button>
-          </form>
-          <span class='muted' style='font-size:.8rem'>{toggle_hint}</span>
-        </div>"""
-
-    if not portions:
-        book_body = reading_toggle_html + "<p class='muted' style='margin-top:.75rem'>No book uploaded.</p>"
-    else:
-        vbadge = ""
-        if reading_on and expected > 0:
-            vbadge = "<span style='color:#4ade80;font-size:.8rem'>📖 Reading played</span>" if triggered else f"<span style='color:#a5b4fc;font-size:.8rem'>📖 {voted}/{expected} voted</span>"
-        book_body = reading_toggle_html + f"""
-        <div class='book-info' style='margin-top:.75rem'>
-          <span class='book-title'>{book_title or "Untitled"}</span>
-          <span class='muted'>Portion {book_idx + 1} of {book_total}</span>
-        </div>
-        {f"<div style='margin-bottom:.5rem'>{vbadge}</div>" if vbadge else ""}
-        <div class='book-btns'>
-          <form method='POST' action='/book/advance'><button class='sec-btn'>Skip to Next Portion</button></form>
-          <form method='POST' action='/book/remove' onsubmit="return confirm('Remove this book?')"><button class='rm-btn'>Remove Book</button></form>
-        </div>"""
-
-    record_on = get_record_enabled()
-    replay_on = get_replay_enabled()
-    rec_meta  = load_recording_meta()
-    rec_path  = os.path.join(RECORDINGS_DIR, "latest.mp3")
-    rec_exists = os.path.exists(rec_path)
-    if rec_exists and rec_meta:
-        rec_info_html = f"<p class='muted' style='font-size:.82rem;margin:.4rem 0'>Recorded: {rec_meta.get('date','unknown')}</p>"
-        rec_dl_html   = "<a href='/recordings/audio' class='sec-btn' style='display:inline-block;text-decoration:none;margin-top:.4rem' download='conference.mp3'>⬇ Download</a>"
-    else:
-        rec_info_html = "<p class='muted' style='font-size:.82rem;margin:.4rem 0'>No recording saved yet.</p>"
-        rec_dl_html   = ""
-
-    rec_toggle_cls    = "toggle-on" if record_on else "toggle-off"
-    rec_toggle_label  = "Record: On" if record_on else "Record: Off"
-    rec_toggle_hint   = "Conference will be recorded automatically." if record_on else "Enable to record conferences."
-    replay_toggle_cls   = "toggle-on" if replay_on else "toggle-off"
-    replay_toggle_label = "Replay for Late Callers: On" if replay_on else "Replay for Late Callers: Off"
-    replay_toggle_hint  = "Late callers hear the last recording." if replay_on else "Enable so late callers hear playback."
-    ann_on = get_announcements_enabled()
-    ann_toggle_cls   = "toggle-on" if ann_on else "toggle-off"
-    ann_toggle_label = "Join Announcements: On" if ann_on else "Join Announcements: Off"
-    ann_toggle_hint  = "Everyone hears '[Name] has joined' when someone connects." if ann_on else "Enable to announce participants."
-
-    schedule   = load_schedule()
-    sched_rows = ""
-    for e in schedule:
-        sched_rows += f"""
-        <li class='sched-item'>
-          <span class='sched-label'>{fmt_schedule_entry(e)}</span>
-          <form method='POST' action='/schedule/remove'>
-            <input type='hidden' name='day'    value='{e["day"]}'/>
-            <input type='hidden' name='hour'   value='{e["hour"]}'/>
-            <input type='hidden' name='minute' value='{e["minute"]}'/>
-            <button class='rm-btn' onclick="return confirm('Remove this schedule?')">✕</button>
-          </form>
-        </li>"""
-    if not sched_rows:
-        sched_rows = "<li class='muted' style='padding:.4rem 0;border:none;background:none'>No scheduled calls.</li>"
-
-    day_opts     = "".join(f"<option value='{i}'>{d}</option>" for i, d in enumerate(DAYS))
-    btn_label    = "● Running…" if running else "▶ Start Conference Now"
-    btn_disabled = "disabled" if running else ""
-
+    days_json = json.dumps(["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])
     return f"""<!DOCTYPE html>
 <html lang='en'><head>
-  <meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
+  <meta charset='UTF-8'/>
+  <meta name='viewport' content='width=device-width,initial-scale=1'/>
   <title>Conference Manager</title>
   <link rel='manifest' href='/manifest.json'/>
   <meta name='theme-color' content='#1e2433'/>
@@ -1323,7 +1208,7 @@ def status():
     .num{{font-family:monospace}}
     .cname{{color:#94a3b8;font-size:.8rem;margin-left:.2rem;flex:1}}
     .stat{{font-weight:600;text-transform:capitalize;font-size:.8rem}}
-    .err{{color:#f87171;font-size:.75rem}}
+    .err-text{{color:#f87171;font-size:.75rem}}
     ul.nums li{{background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.65rem .85rem;display:flex;flex-direction:column;gap:.5rem}}
     .num-info{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}}
     .nname{{color:#94a3b8;font-size:.8rem;margin-left:auto}}
@@ -1359,9 +1244,12 @@ def status():
     .hint{{font-size:.75rem;color:#475569;line-height:1.5}}
     .footer{{font-size:.73rem;color:#374151;text-align:center}}
     details summary{{cursor:pointer;font-size:.85rem;color:#6366f1;font-weight:600;user-select:none}}
+    .toast{{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1e2433;border:1px solid #2d3748;color:#e2e8f0;padding:.6rem 1.25rem;border-radius:10px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}}
+    .toast.show{{opacity:1}}
   </style>
 </head>
 <body><div class='wrap'>
+
   <div style='display:flex;justify-content:space-between;align-items:center'>
     <h1>Conference Manager</h1>
     <form method='POST' action='/logout'>
@@ -1369,12 +1257,12 @@ def status():
     </form>
   </div>
 
+  <!-- TRIGGER -->
   <section>
-    <form method='POST' action='/trigger' onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='● Starting…'">
-      <button class='trigger-btn' {btn_disabled}>{btn_label}</button>
-    </form>
+    <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶ Start Conference Now</button>
   </section>
 
+  <!-- DIAL-IN -->
   <section>
     <h2>Dial-In Number</h2>
     <div class='dial-box'>
@@ -1383,75 +1271,390 @@ def status():
     </div>
   </section>
 
-  <section><h2>Last Conference</h2>{run_body}</section>
-
+  <!-- LAST CONFERENCE -->
   <section>
-    <h2>Phone Numbers ({len(numbers)})</h2>
-    <form method='POST' action='/numbers/add' style='margin-bottom:.75rem'>
-      <div class='add-row'>
-        <input type='tel'  name='number' placeholder='Number, e.g. 2025551234' required/>
-        <input type='text' name='name'   placeholder='Name (optional)'/>
-        <button class='add-btn'>+ Add</button>
-      </div>
-    </form>
-    <ul class='nums'>{num_rows}</ul>
+    <h2>Last Conference</h2>
+    <div id='last-run'><p class='muted'>Loading...</p></div>
   </section>
 
+  <!-- NUMBERS -->
+  <section>
+    <h2>Phone Numbers (<span id='num-count'>0</span>)</h2>
+    <div class='add-row' style='margin-bottom:.75rem'>
+      <input type='tel'  id='new-number' placeholder='Number, e.g. 2025551234'/>
+      <input type='text' id='new-name'   placeholder='Name (optional)'/>
+      <button class='add-btn' onclick='addNumber()'>+ Add</button>
+    </div>
+    <ul class='nums' id='numbers-list'><li class='muted'>Loading...</li></ul>
+  </section>
+
+  <!-- SCHEDULE -->
   <section>
     <h2>Schedule</h2>
-    <ul class='sched'>{sched_rows}</ul>
-    <form method='POST' action='/schedule/add' class='sched-add'>
-      <select name='day'>{day_opts}</select>
-      <input type='time' name='time' required/>
-      <button class='add-btn'>+ Add</button>
-    </form>
+    <ul class='sched' id='schedule-list'><li class='muted'>Loading...</li></ul>
+    <div class='sched-add'>
+      <select id='sched-day'></select>
+      <input type='time' id='sched-time' value='22:45'/>
+      <button class='add-btn' onclick='addSchedule()'>+ Add</button>
+    </div>
     <p class='hint' style='margin-top:.5rem'>Times are Eastern (ET). Changes take effect immediately.</p>
   </section>
 
+  <!-- DAILY READING -->
   <section>
     <h2>Daily Reading</h2>
-    {book_body}
-    <details>
-      <summary>{'Replace book' if portions else 'Upload a book (.txt)'}</summary>
-      <form method='POST' action='/book/upload' enctype='multipart/form-data' class='upload-form'>
-        <input type='file' name='book' accept='.txt' required/>
-        <input type='text' name='title' placeholder='Book title (optional)'/>
+    <div id='reading-section'><p class='muted'>Loading...</p></div>
+    <details id='book-upload-details'>
+      <summary id='book-upload-summary'>Upload a book (.txt)</summary>
+      <form id='book-upload-form' class='upload-form'>
+        <input type='file'   name='book'              accept='.txt' required/>
+        <input type='text'   name='title'             placeholder='Book title (optional)'/>
         <input type='number' name='lines_per_portion' value='30' min='5' max='200'/>
         <p class='hint'>Upload a plain .txt file. Each portion is read aloud via text-to-speech only if all participants vote yes.</p>
-        <button class='upload-btn'>Upload &amp; Split</button>
+        <button type='button' class='upload-btn' onclick='uploadBook()'>Upload &amp; Split</button>
       </form>
     </details>
   </section>
 
+  <!-- RECORDING -->
   <section>
     <h2>Recording</h2>
-    <div class='toggle-row'>
-      <form method='POST' action='/recording/toggle'>
-        <button class='toggle-btn {rec_toggle_cls}'>{rec_toggle_label}</button>
-      </form>
-      <span class='muted' style='font-size:.8rem'>{rec_toggle_hint}</span>
-    </div>
-    <div class='toggle-row' style='margin-top:.6rem'>
-      <form method='POST' action='/replay/toggle'>
-        <button class='toggle-btn {replay_toggle_cls}'>{replay_toggle_label}</button>
-      </form>
-      <span class='muted' style='font-size:.8rem'>{replay_toggle_hint}</span>
-    </div>
-    {rec_info_html}{rec_dl_html}
+    <div id='recording-section'><p class='muted'>Loading...</p></div>
   </section>
 
+  <!-- JOIN ANNOUNCEMENTS -->
   <section>
     <h2>Join Announcements</h2>
-    <div class='toggle-row'>
-      <form method='POST' action='/announcements/toggle'>
-        <button class='toggle-btn {ann_toggle_cls}'>{ann_toggle_label}</button>
-      </form>
-      <span class='muted' style='font-size:.8rem'>{ann_toggle_hint}</span>
-    </div>
+    <div id='announcements-section'><p class='muted'>Loading...</p></div>
   </section>
 
   <p class='footer'><span class='tag paused'>Paused</span> numbers are skipped on the next call</p>
-</div></body></html>"""
+  <div class='toast' id='toast'></div>
+</div>
+
+<script>
+const DAYS = {days_json};
+const STATUS_ICONS = {{
+  connected:  ["✅","#4ade80"],
+  voicemail:  ["📵","#fb923c"],
+  dialing:    ["⏳","#facc15"],
+  busy:       ["🔴","#f87171"],
+  unanswered: ["🔕","#94a3b8"],
+  timeout:    ["🔕","#94a3b8"],
+  failed:     ["❌","#f87171"],
+  error:      ["❌","#f87171"],
+}};
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, dur=2000) {{
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), dur);
+}}
+
+// ── Generic AJAX POST ──────────────────────────────────────────────────────
+async function post(url, data={{}}, isForm=false) {{
+  let opts;
+  if (isForm) {{
+    opts = {{ method:"POST", body: data }};
+  }} else {{
+    opts = {{ method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(data) }};
+  }}
+  const r = await fetch(url, opts);
+  return r.json();
+}}
+
+// ── Render helpers ─────────────────────────────────────────────────────────
+function toggleBtn(on, label_on, label_off, cls_extra="") {{
+  const cls = on ? "toggle-on" : "toggle-off";
+  const lbl = on ? label_on : label_off;
+  return `<button class="toggle-btn ${{cls}} ${{cls_extra}}" ${{cls_extra}}>
+    ${{lbl}}
+  </button>`;
+}}
+
+function renderNumbers(numbers) {{
+  document.getElementById("num-count").textContent = numbers.length;
+  const ul = document.getElementById("numbers-list");
+  if (!numbers.length) {{
+    ul.innerHTML = "<li class='muted' style='border:none;background:none;padding:.5rem 0'>No numbers yet.</li>";
+    return;
+  }}
+  ul.innerHTML = numbers.map(r => {{
+    const paused = r.paused;
+    const li_cls = paused ? "num-paused" : "";
+    const pause_tag = paused ? "<span class='tag paused'>Paused</span>" : "";
+    const disp = r.name || "<span class='muted'>No name</span>";
+    return `<li class="${{li_cls}}">
+      <div class="num-info">
+        <span class="num">${{r.number}}</span>${{pause_tag}}
+        <span class="nname">${{disp}}</span>
+      </div>
+      <div class="num-actions">
+        <input type="text" class="name-input" value="${{r.name}}" placeholder="Name" id="name-${{r.number}}"/>
+        <button class="save-btn" onclick="saveName('${{r.number}}')">Save</button>
+        <button class="${{paused?'unpause-btn':'pause-btn'}}" onclick="togglePause('${{r.number}}', ${{paused}})">${{paused?"Resume":"Pause"}}</button>
+        <button class="rm-btn" onclick="removeNumber('${{r.number}}')">✕</button>
+      </div>
+    </li>`;
+  }}).join("");
+}}
+
+function renderSchedule(schedule) {{
+  const ul = document.getElementById("schedule-list");
+  if (!schedule.length) {{
+    ul.innerHTML = "<li class='muted' style='padding:.4rem 0;border:none;background:none'>No scheduled calls.</li>";
+    return;
+  }}
+  ul.innerHTML = schedule.map(e => {{
+    const h=e.hour, m=e.minute;
+    const ampm = h<12?"AM":"PM";
+    const h12  = h%12||12;
+    const label = `${{DAYS[e.day]}}  ${{h12}}:${{String(m).padStart(2,"0")}} ${{ampm}} ET`;
+    return `<li class="sched-item">
+      <span class="sched-label">${{label}}</span>
+      <button class="rm-btn" onclick="removeSchedule(${{e.day}},${{e.hour}},${{e.minute}})">✕</button>
+    </li>`;
+  }}).join("");
+}}
+
+function renderLastRun(s) {{
+  const el = document.getElementById("last-run");
+  const btn = document.getElementById("trigger-btn");
+  if (s.running) {{
+    btn.disabled = true;
+    btn.textContent = "● Running…";
+  }} else {{
+    btn.disabled = false;
+    btn.textContent = "▶ Start Conference Now";
+  }}
+  if (!s.run_time) {{
+    el.innerHTML = "<p class='muted'>No conference has run yet since the server started.</p>";
+    return;
+  }}
+  const badge = s.running ? "<span class='live'>● Live</span>" : "";
+  const calls = s.calls || [];
+  const connected = calls.filter(c=>c.status==="connected").length;
+  const rows = calls.map(c => {{
+    const [icon,color] = STATUS_ICONS[c.status] || ["❓","#94a3b8"];
+    const name = c.name ? `<span class="cname">${{c.name}}</span>` : "";
+    const err  = c.error ? `<span class="err-text">(${{c.error}})</span>` : "";
+    return `<li><span class="icon">${{icon}}</span><span class="num">${{c.number}}</span>${{name}}<span class="stat" style="color:${{color}}">${{c.status}}</span>${{err}}</li>`;
+  }}).join("");
+  el.innerHTML = `
+    <div class="summary">
+      <span class="muted">Last run: ${{s.run_time}} ${{badge}}</span>
+      <span class="counts">${{connected}}/${{calls.length}} connected</span>
+    </div>
+    <ul class="calls">${{rows}}</ul>
+    <a href="/history" style="font-size:.8rem;color:#6366f1;display:block;margin-top:.5rem">View full call history →</a>`;
+}}
+
+function renderReading(s) {{
+  const el = document.getElementById("reading-section");
+  const on = s.reading_enabled;
+  const toggle_hint = on
+    ? "Participants vote by pressing 1. If all vote yes, the reading plays automatically."
+    : "Auto-read is disabled.";
+  let body = `<div class="toggle-row">
+    <button class="toggle-btn ${{on?'toggle-on':'toggle-off'}}" onclick="toggleReading()">${{on?"Auto-Read: On":"Auto-Read: Off"}}</button>
+    <span class="muted" style="font-size:.8rem">${{toggle_hint}}</span>
+  </div>`;
+  if (!s.book_total) {{
+    body += "<p class='muted' style='margin-top:.75rem'>No book uploaded.</p>";
+    document.getElementById("book-upload-summary").textContent = "Upload a book (.txt)";
+  }} else {{
+    let vbadge = "";
+    if (on && s.expected > 0) {{
+      vbadge = s.triggered
+        ? "<span style='color:#4ade80;font-size:.8rem'>📖 Reading played</span>"
+        : `<span style='color:#a5b4fc;font-size:.8rem'>📖 ${{s.voted}}/${{s.expected}} voted</span>`;
+    }}
+    body += `<div class="book-info" style="margin-top:.75rem">
+      <span class="book-title">${{s.book_title||"Untitled"}}</span>
+      <span class="muted">Portion ${{s.book_index+1}} of ${{s.book_total}}</span>
+    </div>
+    ${{vbadge ? `<div style="margin-bottom:.5rem">${{vbadge}}</div>` : ""}}
+    <div class="book-btns">
+      <button class="sec-btn" onclick="bookAdvance()">Skip to Next Portion</button>
+      <button class="rm-btn" onclick="bookRemove()">Remove Book</button>
+    </div>`;
+    document.getElementById("book-upload-summary").textContent = "Replace book";
+  }}
+  el.innerHTML = body;
+}}
+
+function renderRecording(s) {{
+  const el = document.getElementById("recording-section");
+  const rec_on    = s.record_enabled;
+  const replay_on = s.replay_enabled;
+  const rec_hint   = rec_on ? "Conference will be recorded automatically." : "Enable to record conferences.";
+  const replay_hint = replay_on ? "Late callers hear the last recording." : "Enable so late callers hear playback.";
+  let rec_info = "<p class='muted' style='font-size:.82rem;margin:.4rem 0'>No recording saved yet.</p>";
+  let rec_dl   = "";
+  if (s.rec_exists && s.rec_meta && s.rec_meta.date) {{
+    rec_info = `<p class='muted' style='font-size:.82rem;margin:.4rem 0'>Recorded: ${{s.rec_meta.date}}</p>`;
+    rec_dl   = `<a href='/recordings/audio' class='sec-btn' style='display:inline-block;text-decoration:none;margin-top:.4rem' download='conference.mp3'>⬇ Download</a>`;
+  }}
+  el.innerHTML = `
+    <div class="toggle-row">
+      <button class="toggle-btn ${{rec_on?'toggle-on':'toggle-off'}}" onclick="toggleRecording()">${{rec_on?"Record: On":"Record: Off"}}</button>
+      <span class="muted" style="font-size:.8rem">${{rec_hint}}</span>
+    </div>
+    <div class="toggle-row" style="margin-top:.6rem">
+      <button class="toggle-btn ${{replay_on?'toggle-on':'toggle-off'}}" onclick="toggleReplay()">${{replay_on?"Replay for Late Callers: On":"Replay for Late Callers: Off"}}</button>
+      <span class="muted" style="font-size:.8rem">${{replay_hint}}</span>
+    </div>
+    ${{rec_info}}${{rec_dl}}`;
+}}
+
+function renderAnnouncements(s) {{
+  const el = document.getElementById("announcements-section");
+  const on = s.announcements_enabled;
+  const hint = on
+    ? "Everyone hears '[Name] has joined' when someone connects."
+    : "Enable to announce participants.";
+  el.innerHTML = `<div class="toggle-row">
+    <button class="toggle-btn ${{on?'toggle-on':'toggle-off'}}" onclick="toggleAnnouncements()">${{on?"Join Announcements: On":"Join Announcements: Off"}}</button>
+    <span class="muted" style="font-size:.8rem">${{hint}}</span>
+  </div>`;
+}}
+
+// ── Full state refresh ─────────────────────────────────────────────────────
+async function refresh() {{
+  try {{
+    const s = await fetch("/api/state").then(r=>r.json());
+    renderLastRun(s);
+    renderNumbers(s.numbers);
+    renderSchedule(s.schedule);
+    renderReading(s);
+    renderRecording(s);
+    renderAnnouncements(s);
+  }} catch(e) {{
+    console.error("Refresh error", e);
+  }}
+}}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+async function triggerConference() {{
+  const btn = document.getElementById("trigger-btn");
+  btn.disabled = true;
+  btn.textContent = "● Starting…";
+  const r = await post("/trigger");
+  if (!r.ok) {{ toast("Already running"); btn.disabled=false; btn.textContent="▶ Start Conference Now"; }}
+  else {{ toast("Conference started!"); setTimeout(refresh, 2000); }}
+}}
+
+async function addNumber() {{
+  const num  = document.getElementById("new-number").value.trim();
+  const name = document.getElementById("new-name").value.trim();
+  if (!num) return;
+  const r = await post("/numbers/add", {{number:num, name}});
+  if (r.ok) {{
+    document.getElementById("new-number").value = "";
+    document.getElementById("new-name").value   = "";
+    renderNumbers(r.numbers);
+    toast("Number added");
+  }} else {{ toast("Invalid number"); }}
+}}
+
+async function removeNumber(n) {{
+  if (!confirm(`Remove ${{n}}?`)) return;
+  const r = await post("/numbers/remove", {{number:n}});
+  if (r.ok) {{ renderNumbers(r.numbers); toast("Removed"); }}
+}}
+
+async function togglePause(n, currently_paused) {{
+  const url = currently_paused ? "/numbers/unpause" : "/numbers/pause";
+  const r = await post(url, {{number:n}});
+  if (r.ok) {{ renderNumbers(r.numbers); toast(currently_paused?"Resumed":"Paused"); }}
+}}
+
+async function saveName(n) {{
+  const name = document.getElementById(`name-${{n}}`).value.trim();
+  const r = await post("/numbers/setname", {{number:n, name}});
+  if (r.ok) {{ renderNumbers(r.numbers); toast("Name saved"); }}
+}}
+
+async function addSchedule() {{
+  const day  = document.getElementById("sched-day").value;
+  const time = document.getElementById("sched-time").value;
+  if (!time) return;
+  const r = await post("/schedule/add", {{day:parseInt(day), time}});
+  if (r.ok) {{ renderSchedule(r.schedule); toast("Schedule added"); }}
+}}
+
+async function removeSchedule(day, hour, minute) {{
+  if (!confirm("Remove this schedule?")) return;
+  const r = await post("/schedule/remove", {{day, hour, minute}});
+  if (r.ok) {{ renderSchedule(r.schedule); toast("Removed"); }}
+}}
+
+async function toggleReading() {{
+  await post("/reading/toggle");
+  refresh();
+}}
+
+async function bookAdvance() {{
+  await post("/book/advance");
+  refresh();
+}}
+
+async function bookRemove() {{
+  if (!confirm("Remove this book?")) return;
+  await post("/book/remove");
+  refresh();
+  toast("Book removed");
+}}
+
+async function uploadBook() {{
+  const form = document.getElementById("book-upload-form");
+  const data = new FormData(form);
+  const r = await post("/book/upload", data, true);
+  if (r.ok) {{ refresh(); toast(`Book uploaded — ${{r.count}} portions`); document.getElementById("book-upload-details").open=false; }}
+  else {{ toast("Upload failed"); }}
+}}
+
+async function toggleRecording() {{
+  await post("/recording/toggle");
+  refresh();
+}}
+
+async function toggleReplay() {{
+  await post("/replay/toggle");
+  refresh();
+}}
+
+async function toggleAnnouncements() {{
+  await post("/announcements/toggle");
+  refresh();
+}}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+// Populate day selector
+const dayEl = document.getElementById("sched-day");
+DAYS.forEach((d,i) => {{
+  const o = document.createElement("option");
+  o.value = i; o.textContent = d;
+  dayEl.appendChild(o);
+}});
+
+// Initial load
+refresh();
+
+// Auto-refresh every 10 seconds when conference is running
+setInterval(async () => {{
+  const btn = document.getElementById("trigger-btn");
+  if (btn.disabled) refresh();
+}}, 10000);
+
+// Service worker
+if ("serviceWorker" in navigator) {{
+  navigator.serviceWorker.register("/sw.js").catch(()=>{{}});
+}}
+</script>
+</body></html>"""
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
