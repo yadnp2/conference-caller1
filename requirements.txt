@@ -5,3 +5,4 @@ google-auth
 werkzeug
 schedule
 requests
+psycopg2-binary
