@@ -4,27 +4,22 @@ from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, redirect, session, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from vonage_voice.models import CreateCallRequest, ToPhone, Phone, TtsStreamOptions
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 app.secret_key = os.environ["SESSION_SECRET"]
 
-VONAGE_APP_ID      = os.environ["VONAGE_APP_ID"]
-FROM_NUMBER        = os.environ["FROM_NUMBER"]
-BASE_URL           = os.environ["BASE_URL"]
-CONFERENCE_NAME    = "DailyConference"
-EASTERN            = ZoneInfo("America/New_York")
-BASE_DIR           = os.path.dirname(__file__)
-LOCAL_NUMBERS_FILE = os.path.join(BASE_DIR, "numbers_local.json")
-NAMES_FILE         = os.path.join(BASE_DIR, "names.json")
-BOOK_FILE          = os.path.join(BASE_DIR, "book_state.json")
-SETTINGS_FILE      = os.path.join(BASE_DIR, "settings.json")
-SCHEDULE_FILE      = os.path.join(BASE_DIR, "schedule.json")
-USERS_FILE         = os.path.join(BASE_DIR, "users.json")
-RECORDINGS_DIR     = os.path.join(BASE_DIR, "recordings")
-RECORDING_META_FILE= os.path.join(BASE_DIR, "recording_meta.json")
+VONAGE_APP_ID   = os.environ["VONAGE_APP_ID"]
+FROM_NUMBER     = os.environ["FROM_NUMBER"]
+BASE_URL        = os.environ["BASE_URL"]
+CONFERENCE_NAME = "DailyConference"
+EASTERN         = ZoneInfo("America/New_York")
+BASE_DIR        = os.path.dirname(__file__)
+RECORDINGS_DIR  = os.path.join(BASE_DIR, "recordings")
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
-_raw_key = os.environ["VONAGE_PRIVATE_KEY"]
+_raw_key     = os.environ["VONAGE_PRIVATE_KEY"]
 _private_key = _raw_key.replace("\\n", "\n")
 
 client = vonage.Vonage(vonage.Auth(
@@ -32,24 +27,145 @@ client = vonage.Vonage(vonage.Auth(
     private_key=_private_key
 ))
 
+# ── Database ──────────────────────────────────────────────────────────────────
+
+def get_db():
+    return psycopg2.connect(os.environ["DATABASE_URL"], sslmode="require")
+
+def init_db():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS numbers (
+                    number TEXT PRIMARY KEY,
+                    name TEXT DEFAULT '',
+                    paused BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS schedule (
+                    id SERIAL PRIMARY KEY,
+                    day INT NOT NULL,
+                    hour INT NOT NULL,
+                    minute INT NOT NULL,
+                    UNIQUE(day, hour, minute)
+                );
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS call_logs (
+                    id SERIAL PRIMARY KEY,
+                    run_time TIMESTAMPTZ DEFAULT NOW(),
+                    number TEXT NOT NULL,
+                    name TEXT DEFAULT '',
+                    status TEXT NOT NULL,
+                    uuid TEXT,
+                    error TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS recording_meta (
+                    id SERIAL PRIMARY KEY,
+                    url TEXT,
+                    date TEXT,
+                    start_time TEXT,
+                    end_time TEXT,
+                    size_bytes INT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS book (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT DEFAULT '',
+                    portions JSONB DEFAULT '[]',
+                    current_index INT DEFAULT 0
+                );
+            """)
+        conn.commit()
+    print("Database initialized.")
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+settings_lock = threading.Lock()
+
+def get_setting(key, default="false"):
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM settings WHERE key=%s", (key,))
+                row = cur.fetchone()
+                return row[0] if row else default
+    except Exception:
+        return default
+
+def set_setting(key, value):
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO settings (key, value) VALUES (%s, %s)
+                    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value
+                """, (key, str(value)))
+            conn.commit()
+    except Exception as e:
+        print(f"set_setting error: {e}")
+
+def get_reading_enabled():
+    return get_setting("reading_enabled", "false") == "true"
+
+def set_reading_enabled(value: bool):
+    set_setting("reading_enabled", "true" if value else "false")
+
+def get_record_enabled():
+    return get_setting("record_enabled", "true") == "true"
+
+def set_record_enabled(value: bool):
+    set_setting("record_enabled", "true" if value else "false")
+
+def get_replay_enabled():
+    return get_setting("replay_enabled", "true") == "true"
+
+def set_replay_enabled(value: bool):
+    set_setting("replay_enabled", "true" if value else "false")
+
+def get_announcements_enabled():
+    return get_setting("announcements_enabled", "true") == "true"
+
+def set_announcements_enabled(value: bool):
+    set_setting("announcements_enabled", "true" if value else "false")
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
-def get_user():
-    return _read_json(USERS_FILE, {})
-
 def account_exists():
-    return bool(get_user().get("username"))
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM users LIMIT 1")
+                return cur.fetchone() is not None
+    except Exception:
+        return False
 
 def create_account(username, password):
-    _write_json(USERS_FILE, {
-        "username": username.strip().lower(),
-        "password_hash": generate_password_hash(password)
-    })
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, password_hash) VALUES (%s, %s) ON CONFLICT (username) DO UPDATE SET password_hash=EXCLUDED.password_hash",
+                (username.strip().lower(), generate_password_hash(password))
+            )
+        conn.commit()
 
 def check_credentials(username, password):
-    u = get_user()
-    return (u.get("username") == username.strip().lower()
-            and check_password_hash(u.get("password_hash", ""), password))
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT password_hash FROM users WHERE username=%s", (username.strip().lower(),))
+                row = cur.fetchone()
+                return row and check_password_hash(row[0], password)
+    except Exception:
+        return False
 
 def login_required(f):
     @functools.wraps(f)
@@ -86,26 +202,20 @@ def login():
         return redirect(url_for("setup"))
     error = ""
     if request.method == "POST":
-        if check_credentials(request.form.get("username",""),
-                             request.form.get("password","")):
+        if check_credentials(request.form.get("username",""), request.form.get("password","")):
             session["logged_in"] = True
             session.permanent = True
-            next_url = request.args.get("next") or request.form.get("next") or "/status"
-            return redirect(next_url)
+            return redirect(request.args.get("next") or "/status")
         error = "<div class='err'>Incorrect username or password.</div>"
     next_h = f"<input type='hidden' name='next' value='{request.args.get('next','')}'>" if request.args.get("next") else ""
     return f"""<!DOCTYPE html><html lang='en'><head>
-  <meta charset='UTF-8'/>
-  <meta name='viewport' content='width=device-width,initial-scale=1'/>
+  <meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
   <title>Sign In — Conference Manager</title>
-  <link rel='manifest' href='/manifest.json'/>
-  <meta name='theme-color' content='#1e2433'/>
   <style>{_AUTH_CSS}</style></head><body>
   <div class='card'>
     <div><h1>Conference Manager</h1><p class='sub'>Sign in to continue</p></div>
     {error}
-    <form method='POST'>
-      {next_h}
+    <form method='POST'>{next_h}
       <div><label>Username</label><input name='username' type='text' autocomplete='username' required/></div>
       <div><label>Password</label><input name='password' type='password' autocomplete='current-password' required/></div>
       <button class='btn'>Sign In</button>
@@ -137,15 +247,11 @@ def setup():
             session["logged_in"] = True
             return redirect("/status")
     return f"""<!DOCTYPE html><html lang='en'><head>
-  <meta charset='UTF-8'/>
-  <meta name='viewport' content='width=device-width,initial-scale=1'/>
+  <meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
   <title>Create Account — Conference Manager</title>
-  <link rel='manifest' href='/manifest.json'/>
-  <meta name='theme-color' content='#1e2433'/>
   <style>{_AUTH_CSS}</style></head><body>
   <div class='card'>
-    <div><h1>Create Your Account</h1>
-    <p class='sub'>Set up your admin account to access Conference Manager.</p></div>
+    <div><h1>Create Your Account</h1><p class='sub'>Set up your admin account.</p></div>
     {error}
     <form method='POST'>
       <div><label>Username</label><input name='username' type='text' autocomplete='username' required/></div>
@@ -163,78 +269,201 @@ def _clean(n):
         return n if n.startswith("1") else "1" + n
     return None
 
-def _read_json(path, default):
+# ── Numbers ───────────────────────────────────────────────────────────────────
+
+def get_numbers():
     try:
-        with open(path) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT number, name, paused FROM numbers ORDER BY created_at")
+                return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"get_numbers error: {e}")
+        return []
 
-def _write_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+def get_active_numbers():
+    return [r["number"] for r in get_numbers() if not r["paused"]]
 
-# ── Settings (persisted) ──────────────────────────────────────────────────────
+def get_name(number):
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT name FROM numbers WHERE number=%s", (number,))
+                row = cur.fetchone()
+                return row[0] if row else ""
+    except Exception:
+        return ""
 
-settings_lock = threading.Lock()
+def add_number(number, name=""):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO numbers (number, name) VALUES (%s, %s)
+                ON CONFLICT (number) DO UPDATE SET name=EXCLUDED.name, paused=FALSE
+            """, (number, name))
+        conn.commit()
 
-def _settings():
-    return _read_json(SETTINGS_FILE, {})
+def remove_number(number):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM numbers WHERE number=%s", (number,))
+        conn.commit()
 
-def get_reading_enabled():
-    with settings_lock:
-        return _settings().get("reading_enabled", False)
+def set_number_name(number, name):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE numbers SET name=%s WHERE number=%s", (name, number))
+        conn.commit()
 
-def set_reading_enabled(value: bool):
-    with settings_lock:
-        s = _settings(); s["reading_enabled"] = value; _write_json(SETTINGS_FILE, s)
+def pause_number(number, paused=True):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE numbers SET paused=%s WHERE number=%s", (paused, number))
+        conn.commit()
 
-def get_record_enabled():
-    with settings_lock:
-        return _settings().get("record_enabled", True)
+# ── Schedule ──────────────────────────────────────────────────────────────────
 
-def set_record_enabled(value: bool):
-    with settings_lock:
-        s = _settings(); s["record_enabled"] = value; _write_json(SETTINGS_FILE, s)
+DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
-def get_replay_enabled():
-    with settings_lock:
-        return _settings().get("replay_enabled", True)
+def load_schedule():
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT day, hour, minute FROM schedule ORDER BY day, hour, minute")
+                return [dict(r) for r in cur.fetchall()]
+    except Exception:
+        return []
 
-def set_replay_enabled(value: bool):
-    with settings_lock:
-        s = _settings(); s["replay_enabled"] = value; _write_json(SETTINGS_FILE, s)
+def add_schedule_entry(day, hour, minute):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO schedule (day, hour, minute) VALUES (%s, %s, %s)
+                ON CONFLICT (day, hour, minute) DO NOTHING
+            """, (day, hour, minute))
+        conn.commit()
 
-def get_announcements_enabled():
-    with settings_lock:
-        return _settings().get("announcements_enabled", True)
+def remove_schedule_entry(day, hour, minute):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM schedule WHERE day=%s AND hour=%s AND minute=%s", (day, hour, minute))
+        conn.commit()
 
-def set_announcements_enabled(value: bool):
-    with settings_lock:
-        s = _settings(); s["announcements_enabled"] = value; _write_json(SETTINGS_FILE, s)
+def fmt_schedule_entry(e):
+    h, m = e["hour"], e["minute"]
+    ampm = "AM" if h < 12 else "PM"
+    h12  = h % 12 or 12
+    return f"{DAYS[e['day']]}  {h12}:{m:02d} {ampm} ET"
+
+# ── Call logs ─────────────────────────────────────────────────────────────────
+
+current_run_id = None
+run_lock = threading.Lock()
+
+def start_run_log():
+    global current_run_id
+    now = datetime.now(EASTERN)
+    with run_lock:
+        current_run_id = now.strftime("%Y%m%d%H%M%S")
+    return current_run_id
+
+def log_call(run_id, number, name, status, uuid=None, error=None):
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO call_logs (run_time, number, name, status, uuid, error)
+                    VALUES (NOW(), %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (number, name, status, uuid, error))
+                row = cur.fetchone()
+            conn.commit()
+            return row[0] if row else None
+    except Exception as e:
+        print(f"log_call error: {e}")
+        return None
+
+def update_call_log(log_id, status):
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE call_logs SET status=%s WHERE id=%s", (status, log_id))
+            conn.commit()
+    except Exception as e:
+        print(f"update_call_log error: {e}")
+
+def get_last_run_calls():
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get calls from the most recent run (last 2 hours)
+                cur.execute("""
+                    SELECT number, name, status, uuid, error, run_time
+                    FROM call_logs
+                    WHERE run_time >= NOW() - INTERVAL '2 hours'
+                    ORDER BY id DESC
+                    LIMIT 100
+                """)
+                rows = cur.fetchall()
+                if not rows:
+                    return None, []
+                run_time = rows[0]["run_time"].astimezone(EASTERN).strftime("%A %b %d at %-I:%M %p %Z")
+                return run_time, [dict(r) for r in rows]
+    except Exception as e:
+        print(f"get_last_run_calls error: {e}")
+        return None, []
+
+def get_call_history(limit=50):
+    """Get full call history for the logs page."""
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT number, name, status, uuid, error,
+                           run_time AT TIME ZONE 'America/New_York' as run_time_et
+                    FROM call_logs
+                    ORDER BY id DESC
+                    LIMIT %s
+                """, (limit,))
+                return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"get_call_history error: {e}")
+        return []
 
 # ── Recording metadata ────────────────────────────────────────────────────────
 
-recording_lock = threading.Lock()
-
 def load_recording_meta():
-    with recording_lock:
-        return _read_json(RECORDING_META_FILE, {})
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM recording_meta ORDER BY id DESC LIMIT 1")
+                row = cur.fetchone()
+                return dict(row) if row else {}
+    except Exception:
+        return {}
 
 def save_recording_meta(data):
-    with recording_lock:
-        _write_json(RECORDING_META_FILE, data)
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO recording_meta (url, date, start_time, end_time, size_bytes)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (data.get("url"), data.get("date"), data.get("start_time"),
+                      data.get("end_time"), data.get("size_bytes", 0)))
+            conn.commit()
+    except Exception as e:
+        print(f"save_recording_meta error: {e}")
 
 def _vonage_jwt():
     import jwt as pyjwt
     now = int(time.time())
     payload = {"application_id": VONAGE_APP_ID, "iat": now,
-                "jti": str(_uuid.uuid4()), "exp": now + 300}
+               "jti": str(_uuid.uuid4()), "exp": now + 300}
     key = _private_key.encode() if isinstance(_private_key, str) else _private_key
     return pyjwt.encode(payload, key, algorithm="RS256")
 
 def download_recording(url):
-    """Download Vonage recording to disk. Returns True on success."""
     try:
         token = _vonage_jwt()
         resp  = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=60)
@@ -242,82 +471,41 @@ def download_recording(url):
             with open(os.path.join(RECORDINGS_DIR, "latest.mp3"), "wb") as f:
                 f.write(resp.content)
             return True
-        print(f"Recording download failed: {resp.status_code} {resp.text[:200]}")
+        print(f"Recording download failed: {resp.status_code}")
     except Exception as e:
         print(f"Recording download error: {e}")
     return False
-
-# ── Schedule management ───────────────────────────────────────────────────────
-
-DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-
-DEFAULT_SCHEDULE = []
-
-schedule_lock = threading.Lock()
-
-def load_schedule():
-    with schedule_lock:
-        return _read_json(SCHEDULE_FILE, DEFAULT_SCHEDULE)
-
-def save_schedule(entries):
-    with schedule_lock:
-        _write_json(SCHEDULE_FILE, entries)
-
-def add_schedule_entry(day: int, hour: int, minute: int):
-    entries = load_schedule()
-    entry   = {"day": day, "hour": hour, "minute": minute}
-    if entry not in entries:
-        entries.append(entry)
-        entries.sort(key=lambda e: (e["day"], e["hour"], e["minute"]))
-        save_schedule(entries)
-
-def remove_schedule_entry(day: int, hour: int, minute: int):
-    entries = load_schedule()
-    entries = [e for e in entries
-               if not (e["day"] == day and e["hour"] == hour and e["minute"] == minute)]
-    save_schedule(entries)
-
-def fmt_schedule_entry(e):
-    h, m = e["hour"], e["minute"]
-    ampm  = "AM" if h < 12 else "PM"
-    h12   = h % 12 or 12
-    return f"{DAYS[e['day']]}  {h12}:{m:02d} {ampm} ET"
-
-# ── Local number + name store ─────────────────────────────────────────────────
-
-numbers_lock = threading.Lock()
-
-def _load_local():
-    d = _read_json(LOCAL_NUMBERS_FILE, {"added": [], "removed": [], "paused": []})
-    return set(d.get("added", [])), set(d.get("removed", [])), set(d.get("paused", []))
-
-def _save_local(added, removed, paused=None):
-    _write_json(LOCAL_NUMBERS_FILE, {
-        "added":  sorted(added),
-        "removed": sorted(removed),
-        "paused": sorted(paused or set()),
-    })
-
-def get_name(number):
-    return _read_json(NAMES_FILE, {}).get(number, "")
-
-def set_name(number, name):
-    names = _read_json(NAMES_FILE, {})
-    if name:
-        names[number] = name.strip()
-    else:
-        names.pop(number, None)
-    _write_json(NAMES_FILE, names)
 
 # ── Book management ───────────────────────────────────────────────────────────
 
 book_lock = threading.Lock()
 
 def load_book():
-    return _read_json(BOOK_FILE, {"portions": [], "current_index": 0, "title": ""})
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM book ORDER BY id DESC LIMIT 1")
+                row = cur.fetchone()
+                if row:
+                    return {"portions": row["portions"], "current_index": row["current_index"], "title": row["title"], "id": row["id"]}
+    except Exception as e:
+        print(f"load_book error: {e}")
+    return {"portions": [], "current_index": 0, "title": ""}
 
 def save_book(data):
-    _write_json(BOOK_FILE, data)
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                if data.get("id"):
+                    cur.execute("UPDATE book SET title=%s, portions=%s, current_index=%s WHERE id=%s",
+                                (data["title"], json.dumps(data["portions"]), data["current_index"], data["id"]))
+                else:
+                    cur.execute("DELETE FROM book")
+                    cur.execute("INSERT INTO book (title, portions, current_index) VALUES (%s, %s, %s)",
+                                (data["title"], json.dumps(data["portions"]), data["current_index"]))
+            conn.commit()
+    except Exception as e:
+        print(f"save_book error: {e}")
 
 def get_todays_reading():
     with book_lock:
@@ -349,9 +537,6 @@ def upload_book(text, title="", lines_per_portion=30):
     return len(portions)
 
 # ── Reading vote tracking ─────────────────────────────────────────────────────
-# expected: UUIDs of participants who actually answered (connected)
-# votes:    UUIDs of connected participants who pressed 1
-# triggered: whether the reading has already been played this session
 
 vote_lock = threading.Lock()
 reading_session = {"expected": set(), "votes": set(), "triggered": False}
@@ -377,43 +562,32 @@ def _check_and_trigger_reading():
         expected  = set(reading_session["expected"])
         votes     = set(reading_session["votes"])
         triggered = reading_session["triggered"]
-
-    if triggered or not expected or not votes:
+    if triggered or not expected or not votes or votes < expected:
         return
-    if votes < expected:          # not everyone voted yet
+    if votes != expected:
         return
-    if votes != expected:         # someone joined but didn't vote — no auto-read
-        return
-
-    # All connected participants voted yes — play the reading
     with vote_lock:
-        if reading_session["triggered"]:  # double-check inside lock
+        if reading_session["triggered"]:
             return
         reading_session["triggered"] = True
         first_uuid = next(iter(votes))
-
     reading = get_todays_reading()
     if not reading:
         return
-
-    print("All participants voted yes — playing reading into conference.")
+    print("All participants voted yes — playing reading.")
     try:
-        client.voice.play_tts_into_call(
-            first_uuid,
-            TtsStreamOptions(text=reading, language="en-US")
-        )
+        client.voice.play_tts_into_call(first_uuid, TtsStreamOptions(text=reading, language="en-US"))
     except Exception as e:
         print(f"Failed to play reading: {e}")
 
-# ── Call log (in-memory) ──────────────────────────────────────────────────────
+# ── Call state ────────────────────────────────────────────────────────────────
 
-last_run = {"time": None, "calls": [], "running": False}
-call_status_map = {}
-inbound_uuid_map = {}   # uuid → from_number for inbound callers
+last_run   = {"time": None, "calls": [], "running": False}
+call_status_map = {}   # uuid → {number, name, status, log_id}
+inbound_uuid_map = {}
 log_lock = threading.Lock()
 
-# ── Serialized announcement queue ─────────────────────────────────────────────
-# All join announcements are processed one at a time so they never overlap.
+# ── Announcement queue ────────────────────────────────────────────────────────
 
 _ann_queue = _queue.Queue()
 
@@ -429,9 +603,7 @@ def _announcement_worker():
                 try:
                     client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US"))
                 except Exception as e:
-                    print(f"Announce join failed for {u}: {e}")
-            # Wait for speech to finish before playing the next announcement.
-            # Estimate ~10 chars/second speaking rate plus a 1-second buffer.
+                    print(f"Announce failed for {u}: {e}")
             time.sleep(max(3.0, len(text) / 10) + 1.0)
         except Exception as e:
             print(f"Announcement worker error: {e}")
@@ -441,24 +613,16 @@ def _announcement_worker():
 threading.Thread(target=_announcement_worker, daemon=True).start()
 
 def announce_join(name, exclude_uuid=None, delay=0):
-    """Queue a join announcement. Announcements play one at a time, never overlapping."""
     if not name:
         return
     if delay:
         time.sleep(delay)
     _ann_queue.put((name, exclude_uuid))
 
-def get_numbers():
-    with numbers_lock:
-        added, removed, paused = _load_local()
-    return sorted(added - paused)
-
-def get_all_numbers_with_source():
-    with numbers_lock:
-        added, removed, paused = _load_local()
-    return [(n, "local", get_name(n), n in paused) for n in sorted(added)]
+# ── Dialing ───────────────────────────────────────────────────────────────────
 
 def dial(number):
+    name = get_name(number)
     try:
         response = client.voice.create_call(CreateCallRequest(
             to=[ToPhone(number=number)],
@@ -467,21 +631,20 @@ def dial(number):
             event_url=[f"{BASE_URL}/event"],
             machine_detection="hangup",
         ))
-        uuid  = getattr(response, "uuid", None)
-        entry = {"number": number, "name": get_name(number), "status": "dialing", "uuid": uuid}
+        uuid    = getattr(response, "uuid", None)
+        log_id  = log_call(None, number, name, "dialing", uuid=uuid)
+        entry   = {"number": number, "name": name, "status": "dialing", "uuid": uuid, "log_id": log_id}
         with log_lock:
             if uuid:
                 call_status_map[uuid] = entry
             last_run["calls"].append(entry)
     except Exception as e:
-        entry = {"number": number, "name": get_name(number),
-                 "status": "error", "uuid": None, "error": str(e)}
+        log_call(None, number, name, "error", error=str(e))
         with log_lock:
-            last_run["calls"].append(entry)
+            last_run["calls"].append({"number": number, "name": name, "status": "error", "error": str(e)})
 
 def _play_participant_summary():
-    """After dial-out completes, play ONE message listing all connected participants."""
-    time.sleep(12)  # Wait for connections to settle
+    time.sleep(12)
     with log_lock:
         connected_names = [e["name"] for e in last_run.get("calls", [])
                            if e.get("status") == "connected" and e.get("name")]
@@ -513,7 +676,7 @@ def start_conference():
     advance_reading()
     print("Starting conference...")
     try:
-        for number in get_numbers():
+        for number in get_active_numbers():
             dial(number)
             time.sleep(2)
     finally:
@@ -533,61 +696,43 @@ def _conference_ncco():
     return [ncco]
 
 def _vote_ncco():
-    """NCCO with vote prompt then conference — used when reading is enabled and a book is loaded."""
     return [
-        {
-            "action": "talk",
-            "text": ("Joining you into the Shmiras Halashon conference. "
-                     "Press 1 to vote for today's reading to be read aloud automatically. "
-                     "Otherwise, stay on the line to join now.")
-        },
-        {
-            "action": "input",
-            "type": ["dtmf"],
-            "dtmf": {"maxDigits": 1, "timeOut": 8},
-            "eventUrl": [f"{BASE_URL}/reading-vote"]
-        },
+        {"action": "talk", "text": "Joining the conference. Press 1 to vote for today's reading to be read aloud."},
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+         "eventUrl": [f"{BASE_URL}/reading-vote"]},
         *_conference_ncco()
     ]
 
 def _plain_ncco():
     return [
-        {"action": "talk", "text": "Joining you into the Shmiras Halashon conference."},
+        {"action": "talk", "text": "Joining you into the conference."},
         *_conference_ncco()
     ]
 
 def _inbound_join_ncco():
-    """NCCO for inbound callers with a press-1 prompt to announce their arrival."""
     return [
-        {"action": "talk",
-         "text": "Joining you into the Shmiras Halashon conference. Press 1 to announce your arrival to the group."},
-        {"action": "input", "type": ["dtmf"],
-         "dtmf": {"maxDigits": 1, "timeOut": 6},
+        {"action": "talk", "text": "Joining the conference. Press 1 to announce your arrival."},
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 6},
          "eventUrl": [f"{BASE_URL}/join-announce"]},
         *_conference_ncco()
     ]
 
 def _replay_ncco():
-    """NCCO that plays back the latest recording for a late caller."""
     meta = load_recording_meta()
     date_str = meta.get("date", "a previous session")
     return [
-        {"action": "talk", "text": f"The Shmiras Halashon conference from {date_str} is now playing."},
+        {"action": "talk", "text": f"The conference from {date_str} is now playing."},
         {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/audio"], "level": 0},
         {"action": "talk", "text": "You have reached the end of the recording. Goodbye."},
     ]
 
 def _answer_ncco(uuid=None, inbound=False):
-    """Return the right NCCO. For inbound callers we also register them in the
-    expected-voter set so the vote count is accurate."""
-    # Late-caller replay: inbound, no active conference, replay on, recording exists
     if inbound:
         with log_lock:
             running = last_run.get("running", False)
         if not running and get_replay_enabled():
             if os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3")):
                 return _replay_ncco()
-
     if get_reading_enabled() and get_todays_reading():
         if inbound and uuid:
             threading.Thread(target=_mark_answered, args=(uuid,), daemon=True).start()
@@ -597,7 +742,6 @@ def _answer_ncco(uuid=None, inbound=False):
     return _plain_ncco()
 
 def _handle_inbound_announcement(uuid, from_number):
-    """Store inbound UUID→number mapping for use by /join-announce."""
     clean = _clean(from_number) if from_number else None
     num   = clean or from_number
     if num:
@@ -623,7 +767,6 @@ def inbound():
 
 @app.route("/join-announce", methods=["GET","POST"])
 def join_announce():
-    """Called by Vonage when an inbound caller presses a key on the join prompt."""
     data  = request.get_json(silent=True) or {}
     uuid  = data.get("uuid", "")
     digit = (data.get("dtmf") or {}).get("digits", "") or data.get("digits", "")
@@ -639,13 +782,11 @@ def join_announce():
 
 @app.route("/reading-vote", methods=["GET","POST"])
 def reading_vote():
-    """Called by Vonage when a participant presses a key during the vote prompt."""
     data = request.get_json(silent=True) or {}
     uuid = data.get("uuid", "")
     dtmf = (data.get("dtmf") or {}).get("digits", "") or data.get("digits", "")
     if str(dtmf).strip() == "1" and uuid:
         threading.Thread(target=_record_vote, args=(uuid,), daemon=True).start()
-    # Always return the conference NCCO — everyone joins regardless of their vote
     return jsonify(_conference_ncco())
 
 @app.route("/event", methods=["GET","POST"])
@@ -657,32 +798,31 @@ def event():
     with log_lock:
         if uuid in call_status_map:
             entry = call_status_map[uuid]
+            log_id = entry.get("log_id")
             if status == "answered":
                 entry["status"] = "connected"
-                # Participant answered — count them in the expected voters (only when feature is on)
+                if log_id:
+                    threading.Thread(target=update_call_log, args=(log_id, "connected"), daemon=True).start()
                 if get_reading_enabled() and get_todays_reading():
                     threading.Thread(target=_mark_answered, args=(uuid,), daemon=True).start()
             elif status == "machine":
                 entry["status"] = "voicemail"
-            elif status in ("completed","busy","cancelled","failed",
-                            "rejected","unanswered","timeout"):
+                if log_id:
+                    threading.Thread(target=update_call_log, args=(log_id, "voicemail"), daemon=True).start()
+            elif status in ("completed","busy","cancelled","failed","rejected","unanswered","timeout"):
                 if entry["status"] not in ("connected","voicemail"):
                     entry["status"] = status
+                    if log_id:
+                        threading.Thread(target=update_call_log, args=(log_id, status), daemon=True).start()
     return "OK", 200
-
-# ── Recording webhook & audio serve ──────────────────────────────────────────
 
 @app.route("/recording", methods=["GET","POST"])
 def recording_webhook():
-    """Vonage posts here when a conference recording is ready."""
-    data = request.get_json(silent=True) or request.values.to_dict()
+    data       = request.get_json(silent=True) or request.values.to_dict()
     rec_url    = data.get("recording_url") or data.get("url")
     start_time = data.get("start_time", "")
-    end_time   = data.get("end_time", "")
     size_bytes = data.get("size", 0)
-    print(f"Recording webhook: url={rec_url} start={start_time} size={size_bytes}")
     if rec_url:
-        # Format date for display
         try:
             dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
             date_str = dt.astimezone(EASTERN).strftime("%A %B %-d, %Y at %-I:%M %p ET")
@@ -691,24 +831,18 @@ def recording_webhook():
         def _do_download():
             ok = download_recording(rec_url)
             if ok:
-                save_recording_meta({
-                    "url": rec_url, "date": date_str,
-                    "start_time": start_time, "end_time": end_time,
-                    "size_bytes": int(size_bytes),
-                })
-                print("Recording saved successfully.")
+                save_recording_meta({"url": rec_url, "date": date_str,
+                                     "start_time": start_time, "size_bytes": int(size_bytes)})
         threading.Thread(target=_do_download, daemon=True).start()
     return "OK", 200
 
 @app.route("/recordings/audio")
 def recording_audio():
-    """Serve the latest recording MP3 (for Vonage stream NCCO or browser download)."""
     from flask import send_from_directory
     path = os.path.join(RECORDINGS_DIR, "latest.mp3")
     if not os.path.exists(path):
         return "No recording available", 404
-    return send_from_directory(RECORDINGS_DIR, "latest.mp3", mimetype="audio/mpeg",
-                               as_attachment=False)
+    return send_from_directory(RECORDINGS_DIR, "latest.mp3", mimetype="audio/mpeg")
 
 @app.route("/recording/toggle", methods=["POST"])
 @login_required
@@ -728,69 +862,64 @@ def announcements_toggle():
     set_announcements_enabled(not get_announcements_enabled())
     return redirect("/status")
 
-# ── Root redirect ─────────────────────────────────────────────────────────────
+# ── Call History Page ─────────────────────────────────────────────────────────
 
-@app.route("/")
+@app.route("/history")
 @login_required
-def root():
-    return redirect("/status")
-
-# ── PWA manifest & service worker ─────────────────────────────────────────────
-
-@app.route("/manifest.json")
-def manifest():
-    from flask import Response
-    import json as _json
-    data = {
-        "name": "Conference Manager",
-        "short_name": "Conference",
-        "description": "Manage and monitor daily conference calls",
-        "start_url": "/status",
-        "display": "standalone",
-        "background_color": "#0f1117",
-        "theme_color": "#1e2433",
-        "orientation": "portrait-primary",
-        "icons": [
-            {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
-        ]
+def history():
+    calls = get_call_history(limit=200)
+    STATUS_ICONS = {
+        "connected":  ("✅", "#4ade80"),
+        "voicemail":  ("📵", "#fb923c"),
+        "dialing":    ("⏳", "#facc15"),
+        "busy":       ("🔴", "#f87171"),
+        "unanswered": ("🔕", "#94a3b8"),
+        "timeout":    ("🔕", "#94a3b8"),
+        "failed":     ("❌", "#f87171"),
+        "error":      ("❌", "#f87171"),
     }
-    return Response(_json.dumps(data), mimetype="application/manifest+json")
-
-@app.route("/sw.js")
-def service_worker():
-    from flask import Response
-    sw = """
-const CACHE = 'conf-v1';
-const OFFLINE = ['/status', '/static/icon.svg'];
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(OFFLINE)));
-  self.skipWaiting();
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ));
-  self.clients.claim();
-});
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
-  );
-});
-"""
-    return Response(sw, mimetype="application/javascript")
-
-# ── Trigger ───────────────────────────────────────────────────────────────────
-
-@app.route("/trigger", methods=["POST"])
-@login_required
-def trigger():
-    with log_lock:
-        if last_run["running"]:
-            return ("A conference is already in progress.", 409)
-    threading.Thread(target=start_conference, daemon=True).start()
-    return redirect("/status")
+    rows = ""
+    for c in calls:
+        s = c.get("status", "unknown")
+        icon, color = STATUS_ICONS.get(s, ("❓", "#94a3b8"))
+        name = c.get("name", "")
+        try:
+            dt = c["run_time_et"]
+            time_str = dt.strftime("%-m/%-d %I:%M %p") if hasattr(dt, "strftime") else str(dt)
+        except Exception:
+            time_str = ""
+        rows += f"""<tr>
+            <td>{time_str}</td>
+            <td style='font-family:monospace'>{c['number']}</td>
+            <td>{name}</td>
+            <td style='color:{color}'>{icon} {s}</td>
+        </tr>"""
+    if not rows:
+        rows = "<tr><td colspan='4' style='color:#64748b;text-align:center'>No call history yet.</td></tr>"
+    return f"""<!DOCTYPE html><html lang='en'><head>
+  <meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
+  <title>Call History — Conference Manager</title>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e2e8f0;padding:1.5rem 1rem}}
+    .wrap{{max-width:700px;margin:0 auto}}
+    h1{{font-size:1.3rem;font-weight:700;margin-bottom:1rem}}
+    a{{color:#6366f1;text-decoration:none;font-size:.85rem}}
+    table{{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:1rem}}
+    th{{text-align:left;padding:.5rem .75rem;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #2d3748}}
+    td{{padding:.55rem .75rem;border-bottom:1px solid #1e2433}}
+    tr:hover td{{background:#1e2433}}
+  </style></head><body>
+  <div class='wrap'>
+    <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem'>
+      <h1>📋 Call History</h1>
+      <a href='/status'>← Back</a>
+    </div>
+    <table>
+      <thead><tr><th>Time (ET)</th><th>Number</th><th>Name</th><th>Status</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table>
+  </div></body></html>"""
 
 # ── Number management ─────────────────────────────────────────────────────────
 
@@ -799,30 +928,16 @@ def trigger():
 def numbers_add():
     n    = _clean(request.form.get("number", ""))
     name = request.form.get("name", "").strip()
-    if not n:
-        return redirect("/status")
-    with numbers_lock:
-        added, removed, paused = _load_local()
-        added.add(n)
-        removed.discard(n)
-        paused.discard(n)
-        _save_local(added, removed, paused)
-    if name:
-        set_name(n, name)
+    if n:
+        add_number(n, name)
     return redirect("/status")
 
 @app.route("/numbers/remove", methods=["POST"])
 @login_required
 def numbers_remove():
     n = request.form.get("number", "").strip()
-    if not n:
-        return redirect("/status")
-    with numbers_lock:
-        added, removed, paused = _load_local()
-        added.discard(n)
-        removed.add(n)
-        paused.discard(n)
-        _save_local(added, removed, paused)
+    if n:
+        remove_number(n)
     return redirect("/status")
 
 @app.route("/numbers/pause", methods=["POST"])
@@ -830,10 +945,7 @@ def numbers_remove():
 def numbers_pause():
     n = request.form.get("number", "").strip()
     if n:
-        with numbers_lock:
-            added, removed, paused = _load_local()
-            paused.add(n)
-            _save_local(added, removed, paused)
+        pause_number(n, True)
     return redirect("/status")
 
 @app.route("/numbers/unpause", methods=["POST"])
@@ -841,10 +953,7 @@ def numbers_pause():
 def numbers_unpause():
     n = request.form.get("number", "").strip()
     if n:
-        with numbers_lock:
-            added, removed, paused = _load_local()
-            paused.discard(n)
-            _save_local(added, removed, paused)
+        pause_number(n, False)
     return redirect("/status")
 
 @app.route("/numbers/setname", methods=["POST"])
@@ -853,19 +962,43 @@ def numbers_setname():
     n    = request.form.get("number", "").strip()
     name = request.form.get("name", "").strip()
     if n:
-        set_name(n, name)
+        set_number_name(n, name)
     return redirect("/status")
 
-# ── Reading toggle ────────────────────────────────────────────────────────────
+# ── Schedule routes ───────────────────────────────────────────────────────────
+
+@app.route("/schedule/add", methods=["POST"])
+@login_required
+def schedule_add():
+    try:
+        day    = int(request.form["day"])
+        time_s = request.form.get("time", "22:45")
+        hour, minute = [int(x) for x in time_s.split(":")]
+        if 0 <= day <= 6 and 0 <= hour <= 23 and 0 <= minute <= 59:
+            add_schedule_entry(day, hour, minute)
+    except (KeyError, ValueError):
+        pass
+    return redirect("/status")
+
+@app.route("/schedule/remove", methods=["POST"])
+@login_required
+def schedule_remove():
+    try:
+        day    = int(request.form["day"])
+        hour   = int(request.form["hour"])
+        minute = int(request.form["minute"])
+        remove_schedule_entry(day, hour, minute)
+    except (KeyError, ValueError):
+        pass
+    return redirect("/status")
+
+# ── Reading / Book routes ─────────────────────────────────────────────────────
 
 @app.route("/reading/toggle", methods=["POST"])
 @login_required
 def reading_toggle():
-    current = get_reading_enabled()
-    set_reading_enabled(not current)
+    set_reading_enabled(not get_reading_enabled())
     return redirect("/status")
-
-# ── Book management ───────────────────────────────────────────────────────────
 
 @app.route("/book/upload", methods=["POST"])
 @login_required
@@ -892,6 +1025,41 @@ def book_remove():
     with book_lock:
         save_book({"portions": [], "current_index": 0, "title": ""})
     return redirect("/status")
+
+# ── Trigger ───────────────────────────────────────────────────────────────────
+
+@app.route("/trigger", methods=["POST"])
+@login_required
+def trigger():
+    with log_lock:
+        if last_run["running"]:
+            return ("A conference is already in progress.", 409)
+    threading.Thread(target=start_conference, daemon=True).start()
+    return redirect("/status")
+
+# ── Root ──────────────────────────────────────────────────────────────────────
+
+@app.route("/")
+@login_required
+def root():
+    return redirect("/status")
+
+# ── PWA ───────────────────────────────────────────────────────────────────────
+
+@app.route("/manifest.json")
+def manifest():
+    from flask import Response
+    data = {"name": "Conference Manager", "short_name": "Conference",
+            "start_url": "/status", "display": "standalone",
+            "background_color": "#0f1117", "theme_color": "#1e2433",
+            "icons": [{"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}]}
+    return Response(json.dumps(data), mimetype="application/manifest+json")
+
+@app.route("/sw.js")
+def service_worker():
+    from flask import Response
+    sw = "self.addEventListener('fetch', e => {});"
+    return Response(sw, mimetype="application/javascript")
 
 # ── Status page ───────────────────────────────────────────────────────────────
 
@@ -920,25 +1088,22 @@ def status():
         triggered = reading_session["triggered"]
 
     reading_on = get_reading_enabled()
-    numbers    = get_all_numbers_with_source()
+    numbers    = get_numbers()
     book       = load_book()
     portions   = book.get("portions", [])
     book_title = book.get("title", "")
     book_idx   = book.get("current_index", 0)
     book_total = len(portions)
 
-    # Format FROM_NUMBER for display: 12025551234 → (202) 555-1234
     raw = FROM_NUMBER.lstrip("1") if FROM_NUMBER.startswith("1") else FROM_NUMBER
-    dial_in_fmt = (f"({raw[0:3]}) {raw[3:6]}-{raw[6:10]}"
-                   if len(raw) >= 10 else FROM_NUMBER)
+    dial_in_fmt = (f"({raw[0:3]}) {raw[3:6]}-{raw[6:10]}" if len(raw) >= 10 else FROM_NUMBER)
 
-    # ── Last run
     if not run_time:
         run_body = "<p class='muted'>No conference has run yet since the server started.</p>"
     else:
         rows = ""
         for c in calls:
-            s    = c.get("status", "unknown")
+            s = c.get("status", "unknown")
             icon, color = STATUS_ICONS.get(s, ("❓", "#94a3b8"))
             name = c.get("name", "")
             label = f"<span class='cname'>{name}</span>" if name else ""
@@ -949,31 +1114,26 @@ def status():
         total     = len(calls)
         connected = sum(1 for c in calls if c.get("status") == "connected")
         badge     = "<span class='live'>● Live</span>" if running else ""
-
-        run_body = f"""
+        run_body  = f"""
         <div class='summary'>
-          <div>
-            <span class='muted'>Last run: {run_time} {badge}</span>
-          </div>
+          <span class='muted'>Last run: {run_time} {badge}</span>
           <span class='counts'>{connected}/{total} connected</span>
         </div>
-        <ul class='calls'>{rows}</ul>"""
+        <ul class='calls'>{rows}</ul>
+        <a href='/history' style='font-size:.8rem;color:#6366f1;display:block;margin-top:.5rem'>View full call history →</a>"""
 
-    # ── Number list
     num_rows = ""
-    for n, src, name, is_paused in numbers:
-        pause_tag  = "<span class='tag paused'>Paused</span>" if is_paused else ""
-        disp = name if name else "<span class='muted'>No name</span>"
-        li_cls = "num-paused" if is_paused else ""
-        pause_action  = "/numbers/unpause" if is_paused else "/numbers/pause"
-        pause_label   = "Resume" if is_paused else "Pause"
-        pause_btn_cls = "unpause-btn" if is_paused else "pause-btn"
+    for r in numbers:
+        n, name, is_paused = r["number"], r["name"], r["paused"]
+        pause_tag    = "<span class='tag paused'>Paused</span>" if is_paused else ""
+        disp         = name if name else "<span class='muted'>No name</span>"
+        li_cls       = "num-paused" if is_paused else ""
+        pause_action = "/numbers/unpause" if is_paused else "/numbers/pause"
+        pause_label  = "Resume" if is_paused else "Pause"
+        pause_cls    = "unpause-btn" if is_paused else "pause-btn"
         num_rows += f"""
         <li class='{li_cls}'>
-          <div class='num-info'>
-            <span class='num'>{n}</span>{pause_tag}
-            <span class='nname'>{disp}</span>
-          </div>
+          <div class='num-info'><span class='num'>{n}</span>{pause_tag}<span class='nname'>{disp}</span></div>
           <div class='num-actions'>
             <form method='POST' action='/numbers/setname' style='display:flex;gap:.35rem'>
               <input type='hidden' name='number' value='{n}'/>
@@ -982,7 +1142,7 @@ def status():
             </form>
             <form method='POST' action='{pause_action}'>
               <input type='hidden' name='number' value='{n}'/>
-              <button class='{pause_btn_cls}'>{pause_label}</button>
+              <button class='{pause_cls}'>{pause_label}</button>
             </form>
             <form method='POST' action='/numbers/remove'>
               <input type='hidden' name='number' value='{n}'/>
@@ -993,13 +1153,9 @@ def status():
     if not num_rows:
         num_rows = "<li class='muted' style='border:none;background:none;padding:.5rem 0'>No numbers yet.</li>"
 
-    # ── Reading toggle widget
     toggle_label = "Auto-Read: On" if reading_on else "Auto-Read: Off"
     toggle_cls   = "toggle-on" if reading_on else "toggle-off"
-    toggle_hint  = ("Participants will be asked to press 1 to vote. If everyone votes yes, "
-                    "the reading plays into the conference automatically."
-                    if reading_on else
-                    "Auto-read is disabled. Calls connect normally with no vote prompt.")
+    toggle_hint  = "Participants vote by pressing 1. If all vote yes, the reading plays automatically." if reading_on else "Auto-read is disabled."
     reading_toggle_html = f"""
         <div class='toggle-row'>
           <form method='POST' action='/reading/toggle'>
@@ -1008,19 +1164,12 @@ def status():
           <span class='muted' style='font-size:.8rem'>{toggle_hint}</span>
         </div>"""
 
-    # ── Book section
     if not portions:
-        book_body = reading_toggle_html + "<p class='muted' style='margin-top:.75rem'>No book uploaded. Upload a .txt file to enable daily readings.</p>"
+        book_body = reading_toggle_html + "<p class='muted' style='margin-top:.75rem'>No book uploaded.</p>"
     else:
-        # Vote badge only shown when reading is on
+        vbadge = ""
         if reading_on and expected > 0:
-            if triggered:
-                vbadge = "<span class='vote-done' style='font-size:.8rem'>📖 Reading played this session</span>"
-            else:
-                vbadge = f"<span class='vote-count' style='font-size:.8rem'>📖 {voted}/{expected} voted for reading</span>"
-        else:
-            vbadge = ""
-
+            vbadge = "<span style='color:#4ade80;font-size:.8rem'>📖 Reading played</span>" if triggered else f"<span style='color:#a5b4fc;font-size:.8rem'>📖 {voted}/{expected} voted</span>"
         book_body = reading_toggle_html + f"""
         <div class='book-info' style='margin-top:.75rem'>
           <span class='book-title'>{book_title or "Untitled"}</span>
@@ -1028,52 +1177,34 @@ def status():
         </div>
         {f"<div style='margin-bottom:.5rem'>{vbadge}</div>" if vbadge else ""}
         <div class='book-btns'>
-          <form method='POST' action='/book/advance'>
-            <button class='sec-btn'>Skip to Next Portion</button>
-          </form>
-          <form method='POST' action='/book/remove' onsubmit="return confirm('Remove this book?')">
-            <button class='rm-btn'>Remove Book</button>
-          </form>
+          <form method='POST' action='/book/advance'><button class='sec-btn'>Skip to Next Portion</button></form>
+          <form method='POST' action='/book/remove' onsubmit="return confirm('Remove this book?')"><button class='rm-btn'>Remove Book</button></form>
         </div>"""
 
-    # ── Recording section
-    record_on  = get_record_enabled()
-    replay_on  = get_replay_enabled()
-    rec_meta   = load_recording_meta()
-    rec_path   = os.path.join(RECORDINGS_DIR, "latest.mp3")
+    record_on = get_record_enabled()
+    replay_on = get_replay_enabled()
+    rec_meta  = load_recording_meta()
+    rec_path  = os.path.join(RECORDINGS_DIR, "latest.mp3")
     rec_exists = os.path.exists(rec_path)
     if rec_exists and rec_meta:
-        rec_size_kb   = rec_meta.get("size_bytes", 0) // 1024
-        rec_date      = rec_meta.get("date", "unknown")
-        rec_info_html = f"<p class='muted' style='font-size:.82rem;margin:.4rem 0'>Recorded: {rec_date} &nbsp;·&nbsp; {rec_size_kb} KB</p>"
-        rec_dl_html   = "<a href='/recordings/audio' class='sec-btn' style='display:inline-block;text-decoration:none;margin-top:.4rem' download='conference.mp3'>⬇ Download</a>"
-    elif rec_exists:
-        rec_info_html = "<p class='muted' style='font-size:.82rem;margin:.4rem 0'>Recording available (no metadata)</p>"
+        rec_info_html = f"<p class='muted' style='font-size:.82rem;margin:.4rem 0'>Recorded: {rec_meta.get('date','unknown')}</p>"
         rec_dl_html   = "<a href='/recordings/audio' class='sec-btn' style='display:inline-block;text-decoration:none;margin-top:.4rem' download='conference.mp3'>⬇ Download</a>"
     else:
         rec_info_html = "<p class='muted' style='font-size:.82rem;margin:.4rem 0'>No recording saved yet.</p>"
         rec_dl_html   = ""
 
-    rec_toggle_cls   = "toggle-on" if record_on else "toggle-off"
-    rec_toggle_label = "Record Conference: On" if record_on else "Record Conference: Off"
-    rec_toggle_hint  = ("The next scheduled conference will be recorded automatically."
-                        if record_on else
-                        "Enable to automatically record each scheduled conference call.")
+    rec_toggle_cls    = "toggle-on" if record_on else "toggle-off"
+    rec_toggle_label  = "Record: On" if record_on else "Record: Off"
+    rec_toggle_hint   = "Conference will be recorded automatically." if record_on else "Enable to record conferences."
     replay_toggle_cls   = "toggle-on" if replay_on else "toggle-off"
     replay_toggle_label = "Replay for Late Callers: On" if replay_on else "Replay for Late Callers: Off"
-    replay_toggle_hint  = ("Anyone who calls in after the conference will hear the last recording."
-                           if replay_on else
-                           "Enable so callers who missed the conference hear the playback.")
-
-    ann_on  = get_announcements_enabled()
+    replay_toggle_hint  = "Late callers hear the last recording." if replay_on else "Enable so late callers hear playback."
+    ann_on = get_announcements_enabled()
     ann_toggle_cls   = "toggle-on" if ann_on else "toggle-off"
     ann_toggle_label = "Join Announcements: On" if ann_on else "Join Announcements: Off"
-    ann_toggle_hint  = ("Everyone on the call hears '[Name] has joined' when someone connects."
-                        if ann_on else
-                        "Enable to announce each participant's name when they join.")
+    ann_toggle_hint  = "Everyone hears '[Name] has joined' when someone connects." if ann_on else "Enable to announce participants."
 
-    # ── Schedule section
-    schedule = load_schedule()
+    schedule   = load_schedule()
     sched_rows = ""
     for e in schedule:
         sched_rows += f"""
@@ -1087,25 +1218,18 @@ def status():
           </form>
         </li>"""
     if not sched_rows:
-        sched_rows = "<li class='muted' style='padding:.4rem 0;border:none;background:none'>No scheduled calls. Add one below.</li>"
+        sched_rows = "<li class='muted' style='padding:.4rem 0;border:none;background:none'>No scheduled calls.</li>"
 
-    day_opts = "".join(f"<option value='{i}'>{d}</option>" for i, d in enumerate(DAYS))
-
+    day_opts     = "".join(f"<option value='{i}'>{d}</option>" for i, d in enumerate(DAYS))
     btn_label    = "● Running…" if running else "▶ Start Conference Now"
     btn_disabled = "disabled" if running else ""
 
     return f"""<!DOCTYPE html>
-<html lang='en'>
-<head>
-  <meta charset='UTF-8'/>
-  <meta name='viewport' content='width=device-width,initial-scale=1'/>
+<html lang='en'><head>
+  <meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
   <title>Conference Manager</title>
   <link rel='manifest' href='/manifest.json'/>
   <meta name='theme-color' content='#1e2433'/>
-  <meta name='apple-mobile-web-app-capable' content='yes'/>
-  <meta name='apple-mobile-web-app-status-bar-style' content='black-translucent'/>
-  <meta name='apple-mobile-web-app-title' content='Conference'/>
-  <link rel='apple-touch-icon' href='/static/icon.svg'/>
   <style>
     *{{box-sizing:border-box;margin:0;padding:0}}
     body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e2e8f0;padding:1.5rem 1rem 3rem;min-height:100vh}}
@@ -1119,8 +1243,6 @@ def status():
     .summary{{display:flex;justify-content:space-between;align-items:flex-start;background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.7rem 1rem;font-size:.85rem;margin-bottom:.5rem;gap:.5rem}}
     .live{{color:#4ade80;font-weight:700;margin-left:.35rem}}
     .counts{{font-weight:700;color:#4ade80;white-space:nowrap}}
-    .vote-count{{color:#a5b4fc;font-size:.8rem}}
-    .vote-done{{color:#4ade80;font-size:.8rem}}
     .toggle-row{{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}}
     .toggle-btn{{border:none;border-radius:8px;padding:.45rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;white-space:nowrap}}
     .toggle-on{{background:#14532d;color:#86efac}}
@@ -1133,7 +1255,6 @@ def status():
     .sched-label{{font-size:.88rem;font-family:monospace;color:#e2e8f0}}
     .sched-add{{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.65rem}}
     .sched-add select,.sched-add input[type=time]{{background:#1e2433;border:1px solid #2d3748;color:#e2e8f0;border-radius:8px;padding:.55rem .75rem;font-size:.85rem}}
-    .sched-add select:focus,.sched-add input[type=time]:focus{{outline:none;border-color:#3b82f6}}
     .sched-add select{{flex:1;min-width:120px}}
     .sched-add input[type=time]{{flex:1;min-width:100px;color-scheme:dark}}
     ul{{list-style:none;display:flex;flex-direction:column;gap:.4rem}}
@@ -1146,14 +1267,12 @@ def status():
     ul.nums li{{background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.65rem .85rem;display:flex;flex-direction:column;gap:.5rem}}
     .num-info{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}}
     .nname{{color:#94a3b8;font-size:.8rem;margin-left:auto}}
-    .num-actions{{display:flex;align-items:center;gap:.5rem}}
-    .name-input{{flex:1;background:#0f1117;border:1px solid #2d3748;color:#e2e8f0;border-radius:6px;padding:.3rem .6rem;font-size:.8rem;min-width:0}}
+    .num-actions{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}}
+    .name-input{{flex:1;background:#0f1117;border:1px solid #2d3748;color:#e2e8f0;border-radius:6px;padding:.3rem .6rem;font-size:.8rem;min-width:80px}}
     .name-input:focus{{outline:none;border-color:#3b82f6}}
     .save-btn{{background:#1e3a5f;color:#93c5fd;border:none;border-radius:6px;padding:.3rem .65rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap}}
     .save-btn:hover{{background:#1d4ed8;color:#fff}}
     .tag{{font-size:.68rem;font-weight:700;padding:.12rem .4rem;border-radius:4px;letter-spacing:.04em}}
-    .tag.sheet{{background:#1d3461;color:#93c5fd}}
-    .tag.local{{background:#14532d;color:#86efac}}
     .tag.paused{{background:#422006;color:#fb923c}}
     .pause-btn{{background:#292524;color:#fb923c;border:1px solid #422006;border-radius:6px;padding:.3rem .6rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap}}
     .pause-btn:hover{{background:#422006}}
@@ -1169,47 +1288,29 @@ def status():
     .rm-btn:hover{{background:#991b1b}}
     .book-info{{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;font-size:.85rem}}
     .book-title{{font-weight:700}}
-    .book-hint{{font-size:.8rem;color:#64748b;line-height:1.5;margin-bottom:.75rem}}
     .book-btns{{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem}}
     .sec-btn{{background:#1e2433;color:#e2e8f0;border:1px solid #2d3748;border-radius:8px;padding:.5rem 1rem;font-size:.85rem;font-weight:600;cursor:pointer}}
     .sec-btn:hover{{border-color:#6366f1;color:#a5b4fc}}
     .upload-form{{display:flex;flex-direction:column;gap:.6rem;margin-top:.75rem}}
     .upload-form input{{background:#1e2433;border:1px solid #2d3748;color:#e2e8f0;border-radius:8px;padding:.55rem .85rem;font-size:.85rem;width:100%}}
     .upload-form input[type=file]{{color:#94a3b8}}
-    .upload-form input:focus{{outline:none;border-color:#6366f1}}
     .upload-btn{{background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer}}
     .upload-btn:hover{{background:#4338ca}}
     .hint{{font-size:.75rem;color:#475569;line-height:1.5}}
     .footer{{font-size:.73rem;color:#374151;text-align:center}}
     details summary{{cursor:pointer;font-size:.85rem;color:#6366f1;font-weight:600;user-select:none}}
-    #install-banner{{display:none;align-items:center;justify-content:space-between;gap:.75rem;background:#1a2744;border:1px solid #2563eb;border-radius:10px;padding:.75rem 1rem;font-size:.85rem}}
-    #install-banner span{{color:#93c5fd}}
-    .install-btn{{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:.45rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .install-btn:hover{{background:#1d4ed8}}
-    .dismiss-btn{{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.2rem .4rem}}
   </style>
 </head>
-<body>
-<div class='wrap'>
-  <div id='install-banner'>
-    <span>Install this app on your device for quick access.</span>
-    <div style='display:flex;gap:.5rem;align-items:center'>
-      <button class='install-btn' id='install-btn'>Install App</button>
-      <button class='dismiss-btn' id='dismiss-btn' title='Dismiss'>✕</button>
-    </div>
-  </div>
-
+<body><div class='wrap'>
   <div style='display:flex;justify-content:space-between;align-items:center'>
     <h1>Conference Manager</h1>
     <form method='POST' action='/logout'>
-      <button style='background:none;border:1px solid #2d3748;color:#64748b;border-radius:8px;
-                     padding:.35rem .75rem;font-size:.78rem;cursor:pointer'>Sign out</button>
+      <button style='background:none;border:1px solid #2d3748;color:#64748b;border-radius:8px;padding:.35rem .75rem;font-size:.78rem;cursor:pointer'>Sign out</button>
     </form>
   </div>
 
   <section>
-    <form method='POST' action='/trigger'
-          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='● Starting…'">
+    <form method='POST' action='/trigger' onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='● Starting…'">
       <button class='trigger-btn' {btn_disabled}>{btn_label}</button>
     </form>
   </section>
@@ -1222,10 +1323,7 @@ def status():
     </div>
   </section>
 
-  <section>
-    <h2>Last Conference</h2>
-    {run_body}
-  </section>
+  <section><h2>Last Conference</h2>{run_body}</section>
 
   <section>
     <h2>Phone Numbers ({len(numbers)})</h2>
@@ -1256,12 +1354,10 @@ def status():
     <details>
       <summary>{'Replace book' if portions else 'Upload a book (.txt)'}</summary>
       <form method='POST' action='/book/upload' enctype='multipart/form-data' class='upload-form'>
-        <input type='file'   name='book'              accept='.txt' required/>
-        <input type='text'   name='title'             placeholder='Book title (optional)'/>
-        <input type='number' name='lines_per_portion' value='30' min='5' max='200'
-               placeholder='Lines per portion (default: 30)'/>
-        <p class='hint'>Upload a plain .txt file. Split by paragraph breaks, or by the line
-          count above. Each portion is read aloud via text-to-speech only if all participants vote yes.</p>
+        <input type='file' name='book' accept='.txt' required/>
+        <input type='text' name='title' placeholder='Book title (optional)'/>
+        <input type='number' name='lines_per_portion' value='30' min='5' max='200'/>
+        <p class='hint'>Upload a plain .txt file. Each portion is read aloud via text-to-speech only if all participants vote yes.</p>
         <button class='upload-btn'>Upload &amp; Split</button>
       </form>
     </details>
@@ -1281,8 +1377,7 @@ def status():
       </form>
       <span class='muted' style='font-size:.8rem'>{replay_toggle_hint}</span>
     </div>
-    {rec_info_html}
-    {rec_dl_html}
+    {rec_info_html}{rec_dl_html}
   </section>
 
   <section>
@@ -1296,80 +1391,12 @@ def status():
   </section>
 
   <p class='footer'><span class='tag paused'>Paused</span> numbers are skipped on the next call</p>
-</div>
-<script>
-  // Service worker
-  if ('serviceWorker' in navigator) {{
-    navigator.serviceWorker.register('/sw.js').catch(() => {{}});
-  }}
-
-  // Install prompt
-  let deferredPrompt;
-  const banner  = document.getElementById('install-banner');
-  const installBtn = document.getElementById('install-btn');
-  const dismissBtn = document.getElementById('dismiss-btn');
-
-  window.addEventListener('beforeinstallprompt', e => {{
-    e.preventDefault();
-    deferredPrompt = e;
-    if (!sessionStorage.getItem('install-dismissed')) {{
-      banner.style.display = 'flex';
-    }}
-  }});
-
-  installBtn.addEventListener('click', async () => {{
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const {{ outcome }} = await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    banner.style.display = 'none';
-  }});
-
-  dismissBtn.addEventListener('click', () => {{
-    banner.style.display = 'none';
-    sessionStorage.setItem('install-dismissed', '1');
-  }});
-
-  // Hide banner if already installed
-  window.addEventListener('appinstalled', () => {{
-    banner.style.display = 'none';
-    deferredPrompt = null;
-  }});
-</script>
-</body>
-</html>"""
-
-# ── Schedule routes ───────────────────────────────────────────────────────────
-
-@app.route("/schedule/add", methods=["POST"])
-@login_required
-def schedule_add():
-    try:
-        day    = int(request.form["day"])
-        time_s = request.form.get("time", "22:45")
-        hour, minute = [int(x) for x in time_s.split(":")]
-        if 0 <= day <= 6 and 0 <= hour <= 23 and 0 <= minute <= 59:
-            add_schedule_entry(day, hour, minute)
-    except (KeyError, ValueError):
-        pass
-    return redirect("/status")
-
-@app.route("/schedule/remove", methods=["POST"])
-@login_required
-def schedule_remove():
-    try:
-        day    = int(request.form["day"])
-        hour   = int(request.form["hour"])
-        minute = int(request.form["minute"])
-        remove_schedule_entry(day, hour, minute)
-    except (KeyError, ValueError):
-        pass
-    return redirect("/status")
+</div></body></html>"""
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
 def run_scheduler():
-    fired_today: set = set()   # set of (day, hour, minute) fired this calendar day
+    fired_today: set = set()
     last_date = None
     while True:
         now   = datetime.now(EASTERN)
@@ -1386,8 +1413,10 @@ def run_scheduler():
                 break
         time.sleep(30)
 
+# ── Startup ───────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
+    init_db()
     threading.Thread(target=run_scheduler, daemon=True).start()
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-    
