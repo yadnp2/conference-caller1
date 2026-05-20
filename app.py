@@ -582,10 +582,18 @@ def _check_and_trigger_reading():
 
 # ── Call state ────────────────────────────────────────────────────────────────
 
-last_run   = {"time": None, "calls": [], "running": False}
-call_status_map = {}   # uuid → {number, name, status, log_id}
+# running:           dial-out loop is still sending calls
+# conference_active: at least one person is currently connected in the conference
+# pending_calls:     number of outbound calls not yet in a final state
+# summary_fired:     whether the welcome announcement has already played this session
+last_run   = {"time": None, "calls": [], "running": False,
+              "conference_active": False, "pending_calls": 0, "summary_fired": False}
+call_status_map  = {}   # uuid → {number, name, status, log_id}
 inbound_uuid_map = {}
 log_lock = threading.Lock()
+
+FINAL_STATUSES = {"connected", "voicemail", "completed", "busy", "cancelled",
+                  "failed", "rejected", "unanswered", "timeout", "error"}
 
 # ── Announcement queue ────────────────────────────────────────────────────────
 
@@ -644,13 +652,35 @@ def dial(number):
             last_run["calls"].append({"number": number, "name": name, "status": "error", "error": str(e)})
 
 def _play_participant_summary():
-    time.sleep(12)
+    """Wait until every outbound call has reached a final state, then announce
+    only the people who are actually connected in the conference."""
+    MAX_WAIT = 120   # seconds — absolute ceiling in case some events never arrive
+    POLL     = 1     # check every second
+    waited   = 0
+    while waited < MAX_WAIT:
+        time.sleep(POLL)
+        waited += POLL
+        with log_lock:
+            pending = last_run.get("pending_calls", 0)
+            dialing_still = last_run.get("running", False)
+        # Keep waiting while dial-out is still sending calls OR calls are pending
+        if dialing_still or pending > 0:
+            continue
+        break   # everyone has reached a final state
+
     with log_lock:
+        # Mark summary as fired so it doesn't run again this session
+        if last_run.get("summary_fired"):
+            return
+        last_run["summary_fired"] = True
         connected_names = [e["name"] for e in last_run.get("calls", [])
                            if e.get("status") == "connected" and e.get("name")]
         uuids = [u for u, e in call_status_map.items() if e.get("status") == "connected"]
+
     if not connected_names or not uuids:
+        print("Summary: no connected participants to announce.")
         return
+
     if len(connected_names) == 1:
         text = f"Welcome. {connected_names[0]} has joined the call."
     elif len(connected_names) == 2:
@@ -658,6 +688,8 @@ def _play_participant_summary():
     else:
         names_list = ", ".join(connected_names[:-1]) + ", and " + connected_names[-1]
         text = f"Welcome everyone. The following participants have joined: {names_list}."
+
+    print(f"Summary announcement: {text}")
     for u in uuids:
         try:
             client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US"))
@@ -668,15 +700,22 @@ def start_conference():
     with log_lock:
         if last_run["running"]:
             return
-        last_run["running"] = True
-        last_run["time"] = datetime.now(EASTERN).strftime("%A %b %d at %-I:%M %p %Z")
+        last_run["running"]          = True
+        last_run["conference_active"] = False
+        last_run["pending_calls"]     = 0
+        last_run["summary_fired"]     = False
+        last_run["time"]  = datetime.now(EASTERN).strftime("%A %b %d at %-I:%M %p %Z")
         last_run["calls"] = []
         call_status_map.clear()
     _reset_reading_session()
     advance_reading()
     print("Starting conference...")
+    numbers = get_active_numbers()
+    # Set pending count before dialing so the summary waiter sees the right number
+    with log_lock:
+        last_run["pending_calls"] = len(numbers)
     try:
-        for number in get_active_numbers():
+        for number in numbers:
             dial(number)
             time.sleep(2)
     finally:
@@ -729,8 +768,9 @@ def _replay_ncco():
 def _answer_ncco(uuid=None, inbound=False):
     if inbound:
         with log_lock:
-            running = last_run.get("running", False)
-        if not running and get_replay_enabled():
+            conf_active = last_run.get("conference_active", False)
+        # Only play recording if conference is NOT currently active
+        if not conf_active and get_replay_enabled():
             if os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3")):
                 return _replay_ncco()
     if get_reading_enabled() and get_todays_reading():
@@ -799,21 +839,41 @@ def event():
         if uuid in call_status_map:
             entry = call_status_map[uuid]
             log_id = entry.get("log_id")
+            prev_status = entry.get("status", "dialing")
+
             if status == "answered":
                 entry["status"] = "connected"
+                last_run["conference_active"] = True
+                # Only decrement pending if this was still in a non-final state
+                if prev_status not in FINAL_STATUSES:
+                    last_run["pending_calls"] = max(0, last_run["pending_calls"] - 1)
                 if log_id:
                     threading.Thread(target=update_call_log, args=(log_id, "connected"), daemon=True).start()
                 if get_reading_enabled() and get_todays_reading():
                     threading.Thread(target=_mark_answered, args=(uuid,), daemon=True).start()
+
             elif status == "machine":
                 entry["status"] = "voicemail"
+                if prev_status not in FINAL_STATUSES:
+                    last_run["pending_calls"] = max(0, last_run["pending_calls"] - 1)
                 if log_id:
                     threading.Thread(target=update_call_log, args=(log_id, "voicemail"), daemon=True).start()
+
             elif status in ("completed","busy","cancelled","failed","rejected","unanswered","timeout"):
-                if entry["status"] not in ("connected","voicemail"):
+                if entry["status"] == "connected":
+                    # Someone left the conference — check if anyone is still connected
+                    still_connected = any(
+                        e.get("status") == "connected" and e_uuid != uuid
+                        for e_uuid, e in call_status_map.items()
+                    )
+                    last_run["conference_active"] = still_connected
+                else:
                     entry["status"] = status
+                    if prev_status not in FINAL_STATUSES:
+                        last_run["pending_calls"] = max(0, last_run["pending_calls"] - 1)
                     if log_id:
                         threading.Thread(target=update_call_log, args=(log_id, status), daemon=True).start()
+
     return "OK", 200
 
 @app.route("/recording", methods=["GET","POST"])
