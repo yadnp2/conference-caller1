@@ -6,3 +6,4 @@ werkzeug
 schedule
 requests
 psycopg2-binary
+gunicorn
