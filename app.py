@@ -1344,13 +1344,18 @@ def status():
     .toggle-off:hover{{border-color:#6366f1;color:#a5b4fc}}
     .dial-box{{background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.7rem 1rem;font-size:.9rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem}}
     .dial-num{{font-family:monospace;font-size:1rem;font-weight:700;color:#f8fafc;letter-spacing:.04em}}
-    .day-grid{{display:flex;flex-direction:column;gap:.35rem}}
-    .day-row{{display:flex;align-items:center;gap:.6rem;padding:.5rem .75rem;border-radius:8px;background:#1a2035;border:1px solid #2d3748;transition:border-color .15s}}
+    .day-grid{{display:flex;flex-direction:column;gap:.5rem}}
+    .day-row{{display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-radius:8px;background:#1a2035;border:1px solid #2d3748;transition:border-color .15s;flex-wrap:wrap}}
     .day-row.active{{border-color:#3b82f6;background:#1b2a45}}
     .day-name{{min-width:88px;font-size:.88rem;color:#e2e8f0;font-weight:600}}
-    .day-form{{display:flex;align-items:center;gap:.45rem;flex:1}}
-    .time-inp{{background:#0f172a;border:1px solid #2d3748;color:#e2e8f0;border-radius:6px;padding:.38rem .6rem;font-size:.85rem;color-scheme:dark;flex:1;min-width:90px}}
-    .time-inp:focus{{outline:none;border-color:#3b82f6}}
+    .day-form{{display:flex;align-items:center;gap:.4rem;flex:1;flex-wrap:wrap}}
+    .spinner-wrap{{display:flex;flex-direction:column;align-items:center;gap:0}}
+    .spinner-val{{background:#0f172a;border:1px solid #2d3748;color:#e2e8f0;border-radius:6px;padding:.28rem 0;font-size:.95rem;font-weight:700;text-align:center;width:2.4rem;cursor:default;user-select:none}}
+    .spinner-btn{{background:none;border:none;color:#94a3b8;font-size:.7rem;line-height:1;cursor:pointer;padding:.05rem .5rem}}
+    .spinner-btn:hover{{color:#e2e8f0}}
+    .ampm-btn{{background:#1e2433;border:1px solid #2d3748;color:#94a3b8;border-radius:6px;padding:.28rem .55rem;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap}}
+    .ampm-btn.active{{background:#1d4ed8;color:#fff;border-color:#1d4ed8}}
+    .sep{{color:#64748b;font-size:1rem;font-weight:700;padding:0 .1rem}}
     .set-btn{{background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:.38rem .8rem;font-size:.82rem;cursor:pointer;white-space:nowrap}}
     .set-btn:hover{{background:#2563eb}}
     .day-clear{{background:none;border:none;color:#f87171;font-size:1.05rem;cursor:pointer;padding:.1rem .35rem;line-height:1}}
@@ -1617,23 +1622,95 @@ function renderNumbers(numbers) {{
   ul.innerHTML = html;
 }}
 
+// ── Spinner state: one entry per day, default 12:00 AM ───────────────────────
+const spinState = Array.from({{length:7}}, () => ({{h:12, m:0, ampm:"AM"}}));
+
+function to24(s) {{
+  // Convert 12-hr spinner state to 24-hr hour integer
+  let h = s.h % 12;
+  if (s.ampm === "PM") h += 12;
+  return h;
+}}
+
+function loadSpinState(day, hour24, minute) {{
+  const s = spinState[day];
+  s.m = minute;
+  if (hour24 === 0)       {{ s.h = 12; s.ampm = "AM"; }}
+  else if (hour24 < 12)  {{ s.h = hour24; s.ampm = "AM"; }}
+  else if (hour24 === 12) {{ s.h = 12; s.ampm = "PM"; }}
+  else                    {{ s.h = hour24 - 12; s.ampm = "PM"; }}
+}}
+
+function updateSpinDisplay(day) {{
+  const s = spinState[day];
+  const hEl = document.getElementById(`sh-${{day}}`);
+  const mEl = document.getElementById(`sm-${{day}}`);
+  const aEl = document.getElementById(`ampm-${{day}}`);
+  if (hEl) hEl.textContent = String(s.h).padStart(2,"0");
+  if (mEl) mEl.textContent = String(s.m).padStart(2,"0");
+  if (aEl) {{
+    aEl.textContent = s.ampm;
+    aEl.className = "ampm-btn" + (s.ampm==="AM" ? " active" : "");
+  }}
+}}
+
+function spinH(day, delta) {{
+  const s = spinState[day];
+  s.h = (s.h - 1 + delta + 12) % 12 + 1;
+  updateSpinDisplay(day);
+}}
+
+function spinM(day, delta) {{
+  const s = spinState[day];
+  s.m = ((s.m + delta) + 60) % 60;
+  updateSpinDisplay(day);
+}}
+
+function toggleAmpm(day) {{
+  const s = spinState[day];
+  s.ampm = s.ampm === "AM" ? "PM" : "AM";
+  updateSpinDisplay(day);
+}}
+
+function spinnerHTML(day) {{
+  const s = spinState[day];
+  return `
+    <div class="spinner-wrap">
+      <button class="spinner-btn" onclick="spinH(${{day}},1)">▲</button>
+      <div class="spinner-val" id="sh-${{day}}">${{String(s.h).padStart(2,"0")}}</div>
+      <button class="spinner-btn" onclick="spinH(${{day}},-1)">▼</button>
+    </div>
+    <span class="sep">:</span>
+    <div class="spinner-wrap">
+      <button class="spinner-btn" onclick="spinM(${{day}},5)">▲</button>
+      <div class="spinner-val" id="sm-${{day}}">${{String(s.m).padStart(2,"0")}}</div>
+      <button class="spinner-btn" onclick="spinM(${{day}},-5)">▼</button>
+    </div>
+    <button class="ampm-btn ${{s.ampm==='AM'?'active':''}}" id="ampm-${{day}}" onclick="toggleAmpm(${{day}})">
+      ${{s.ampm}}
+    </button>`;
+}}
+
 function renderSchedule(schedule) {{
   const grid = document.getElementById("day-grid");
   const byDay = {{}};
   schedule.forEach(e => {{ if(!(e.day in byDay)) byDay[e.day]=e; }});
+  // Pre-load spinner state from saved schedule
+  DAYS.forEach((_, i) => {{
+    if (byDay[i]) loadSpinState(i, byDay[i].hour, byDay[i].minute);
+    else {{ spinState[i].h=12; spinState[i].m=0; spinState[i].ampm="AM"; }}
+  }});
   grid.innerHTML = DAYS.map((dayName, i) => {{
-    const e       = byDay[i];
-    const timeVal = e ? `${{String(e.hour).padStart(2,"0")}}:${{String(e.minute).padStart(2,"0")}}` : "";
-    const isSet   = !!e;
-    const rowCls  = isSet ? "day-row active" : "day-row";
-    const setLbl  = isSet ? "Update" : "Set";
+    const isSet  = !!byDay[i];
+    const rowCls = isSet ? "day-row active" : "day-row";
+    const setLbl = isSet ? "Update" : "Set";
     const clearBtn = isSet
-      ? `<button class="day-clear" onclick="clearDay(${{i}}, '${{dayName}}')">✕</button>`
+      ? `<button class="day-clear" onclick="clearDay(${{i}},'${{dayName}}')">✕</button>`
       : "";
     return `<div class="${{rowCls}}" id="day-row-${{i}}">
       <span class="day-name">${{dayName}}</span>
       <div class="day-form">
-        <input type="time" class="time-inp" id="time-${{i}}" value="${{timeVal}}"/>
+        ${{spinnerHTML(i)}}
         <button class="set-btn" onclick="setDay(${{i}})">${{setLbl}}</button>
         ${{clearBtn}}
       </div>
@@ -1838,10 +1915,11 @@ async function saveName(n) {{
 }}
 
 async function setDay(day) {{
-  const t = document.getElementById(`time-${{day}}`).value;
-  if (!t) return;
-  const r = await post("/schedule/set-day", {{day, time:t}});
-  if (r.ok) {{ renderSchedule(r.schedule); toast("Schedule updated"); }}
+  const s = spinState[day];
+  const hour24 = to24(s);
+  const timeStr = `${{String(hour24).padStart(2,"0")}}:${{String(s.m).padStart(2,"0")}}`;
+  const r = await post("/schedule/set-day", {{day, time:timeStr}});
+  if (r.ok) {{ renderSchedule(r.schedule); toast("Schedule set!"); }}
 }}
 
 async function clearDay(day, name) {{
