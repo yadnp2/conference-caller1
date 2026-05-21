@@ -572,8 +572,9 @@ def _check_and_trigger_reading():
 
 last_run = {"time": None, "calls": [], "inbound_calls": [], "running": False,
             "conference_active": False, "pending_calls": 0, "summary_fired": False}
-call_status_map = {}
+call_status_map  = {}
 inbound_uuid_map = {}
+session_blocked  = set()   # numbers blocked from joining THIS session only
 log_lock = threading.Lock()
 
 FINAL_STATUSES = {"connected", "voicemail", "completed", "busy", "cancelled",
@@ -707,6 +708,7 @@ def start_conference():
         last_run["calls"]        = []
         last_run["inbound_calls"] = []
         call_status_map.clear()
+    session_blocked.clear()
     _reset_reading_session()
     advance_reading()
     print("Starting conference...")
@@ -806,6 +808,14 @@ def _handle_inbound_announcement(uuid, from_number):
         with log_lock:
             inbound_uuid_map[uuid] = num
 
+def _is_approved_member(number):
+    """Check if a number is in the approved members list (from Google Sheet / local store)."""
+    if not number or number == "Unknown":
+        return False
+    with numbers_lock:
+        added, removed, paused = _load_local()
+    return number in added
+
 @app.route("/answer", methods=["GET","POST"])
 def answer():
     data = request.get_json(silent=True) or request.values
@@ -814,16 +824,32 @@ def answer():
         is_inbound = uuid not in call_status_map
     if is_inbound:
         from_num = data.get("from", "")
+        clean    = _clean(from_num) if from_num else None
+        num      = clean or from_num or "Unknown"
+
+        # Reject if no caller ID (private/hidden number)
+        if not clean:
+            return jsonify([{"action": "talk",
+                "text": "Sorry, calls with a hidden caller ID cannot join this conference. Please call back with caller ID enabled. Goodbye."}])
+
+        # Reject if not on the approved members list
+        if not _is_approved_member(clean):
+            return jsonify([{"action": "talk",
+                "text": "Sorry, your number is not registered for this conference. Please contact the administrator. Goodbye."}])
+
+        # Reject if session-blocked (kicked this session)
+        if clean in session_blocked:
+            return jsonify([{"action": "talk",
+                "text": "You are not able to join this conference session. Goodbye."}])
+
         _handle_inbound_announcement(uuid, from_num)
-        # Determine call source: replay (missed conference) vs live (joining active conference)
+        # Determine call source: replay vs live
         with log_lock:
             running = last_run.get("running", False)
         if not running and get_replay_enabled() and os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3")):
             source = "inbound-replay"
         else:
             source = "inbound-live"
-        clean = _clean(from_num) if from_num else None
-        num = clean or from_num or "Unknown"
         entry = {
             "number": num,
             "name": get_name(num),
@@ -1383,6 +1409,14 @@ def status():
     .dismiss-btn{{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.2rem .4rem}}
     .toast{{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1e2433;border:1px solid #2d3748;color:#e2e8f0;padding:.6rem 1.25rem;border-radius:10px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}}
     .toast.show{{opacity:1}}
+    .hangup-all-btn{{width:100%;padding:.7rem;background:#7f1d1d;color:#fca5a5;border:none;border-radius:8px;font-size:.9rem;font-weight:700;cursor:pointer;margin-bottom:.75rem}}
+    .hangup-all-btn:hover{{background:#991b1b}}
+    .live-call-row{{display:flex;align-items:center;justify-content:space-between;gap:.5rem;background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.6rem .85rem;font-size:.85rem}}
+    .hangup-opts{{display:flex;gap:.4rem}}
+    .hup-btn{{background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;padding:.28rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap}}
+    .hup-btn:hover{{background:#991b1b}}
+    .hup-block-btn{{background:#422006;color:#fb923c;border:none;border-radius:6px;padding:.28rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap}}
+    .hup-block-btn:hover{{background:#7c2d12}}
   </style>
 </head>
 <body><div class='wrap'>
@@ -1404,6 +1438,11 @@ def status():
 
   <section>
     <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶ Start Conference Now</button>
+  </section>
+
+  <section id='hangup-section' style='display:none'>
+    <h2>🔴 End Conference</h2>
+    <div id='hangup-controls'></div>
   </section>
 
   <section>
@@ -1679,6 +1718,72 @@ function renderSheets(s) {{
   el.innerHTML = `<button class="save-btn" style="background:#14532d;color:#86efac;padding:.4rem .9rem" ${{sid?"":"disabled"}} onclick="sheetsSync()">↺ Re-sync from Sheet</button>${{msgHtml}}`;
 }}
 
+async function renderHangup() {{
+  const sec = document.getElementById("hangup-section");
+  const ctl = document.getElementById("hangup-controls");
+  const r   = await fetch("/api/live-calls", {{credentials:"include"}}).then(x=>x.json()).catch(()=>({{calls:[]}}));
+  const calls = r.calls || [];
+  if (!calls.length) {{
+    sec.style.display = "none";
+    return;
+  }}
+  sec.style.display = "block";
+  const connected = calls.filter(c=>c.status==="connected").length;
+  const ringing   = calls.filter(c=>c.status==="dialing").length;
+  let html = `
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
+      <button class="hangup-all-btn" style="flex:1;margin:0" onclick="hangupAllAction(false)">
+        🔴 Hang Up Everyone (${{calls.length}} active)
+      </button>
+      <button class="hangup-all-btn" style="flex:1;margin:0;background:#7c2d12" onclick="hangupAllAction(true)">
+        🚫 Hang Up + Block All from Calling Back
+      </button>
+    </div>
+    <div style="font-size:.75rem;color:#64748b;margin-bottom:.4rem">
+      ${{connected}} connected · ${{ringing}} still ringing
+    </div>`;
+  html += calls.map(c => {{
+    const statusColor = c.status==="connected" ? "#4ade80" : "#facc15";
+    const statusLabel = c.status==="connected" ? "Connected" : "Ringing";
+    const blockedTag  = c.blocked ? "<span style='color:#fb923c;font-size:.72rem'> · Blocked</span>" : "";
+    return `<div class="live-call-row">
+      <div>
+        <span style="font-family:monospace">${{c.number}}</span>
+        ${{c.name ? `<span style="color:#94a3b8;font-size:.8rem"> — ${{c.name}}</span>` : ""}}
+        <span style="color:${{statusColor}};font-size:.72rem;margin-left:.35rem">● ${{statusLabel}}</span>
+        ${{blockedTag}}
+      </div>
+      <div class="hangup-opts">
+        <button class="hup-btn" onclick="hangupOneAction('${{c.uuid}}', false)">Hang Up</button>
+        <button class="hup-block-btn" onclick="hangupOneAction('${{c.uuid}}', true)">Hang Up + Block</button>
+      </div>
+    </div>`;
+  }}).join("");
+  ctl.innerHTML = html;
+}}
+
+async function hangupAllAction(block) {{
+  const msg = block
+    ? `Hang up all ${{(await fetch("/api/live-calls",{{credentials:"include"}}).then(r=>r.json())).calls.length}} active calls and block them from calling back this session?`
+    : `Hang up all active calls?`;
+  if (!confirm(msg)) return;
+  const r = await post("/hangup/all", {{block}});
+  if (r.ok) {{
+    toast(block ? `Hung up ${{r.hung_up.length}} and blocked from calling back` : `Hung up ${{r.hung_up.length}} call(s)`);
+    setTimeout(renderHangup, 1500);
+  }} else {{ toast("Hangup failed"); }}
+}}
+
+async function hangupOneAction(uuid, block) {{
+  const msg = block ? "Hang up and block from calling back this session?" : "Hang up this person?";
+  if (!confirm(msg)) return;
+  const r = await post("/hangup/one", {{uuid, block}});
+  if (r.ok) {{
+    toast(block ? "Hung up and blocked from calling back" : "Hung up");
+    setTimeout(renderHangup, 1500);
+  }} else {{ toast("Hangup failed: " + (r.error||"")); }}
+}}
+
 async function refresh() {{
   try {{
     const s = await fetch("/api/state", {{credentials: "include"}}).then(r=>r.json());
@@ -1689,6 +1794,7 @@ async function refresh() {{
     renderRecording(s);
     renderAnnouncements(s);
     renderSheets(s);
+    renderHangup();
   }} catch(e) {{ console.error("Refresh error", e); }}
 }}
 
@@ -1797,6 +1903,70 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 </script>
 </body></html>"""
 
+
+# ── Manual hangup ─────────────────────────────────────────────────────────────
+
+def _terminate_call(uuid):
+    """Terminate a Vonage call by UUID. Works for ringing and connected calls."""
+    try:
+        client.voice.terminate_call(uuid)
+        return True
+    except Exception as e:
+        print(f"terminate_call error {uuid}: {e}")
+        return False
+
+@app.route("/hangup/all", methods=["POST"])
+@login_required
+def hangup_all():
+    """Hang up ALL active call legs (ringing + connected). Optionally block from calling back."""
+    data  = request.json or {}
+    block = data.get("block", False)
+    with log_lock:
+        targets = [(u, e.copy()) for u, e in call_status_map.items()
+                   if e.get("status") in ("dialing","connected")]
+    hung_up = []
+    for uuid, entry in targets:
+        if _terminate_call(uuid):
+            hung_up.append(entry.get("number", uuid))
+            if block and entry.get("number"):
+                session_blocked.add(entry["number"])
+    return jsonify({"ok": True, "hung_up": hung_up, "blocked": block})
+
+@app.route("/hangup/one", methods=["POST"])
+@login_required
+def hangup_one():
+    """Hang up one participant by UUID. Optionally block from calling back this session."""
+    data  = request.json or {}
+    uuid  = data.get("uuid", "")
+    block = data.get("block", False)
+    if not uuid:
+        return jsonify({"ok": False, "error": "No UUID"}), 400
+    with log_lock:
+        entry = call_status_map.get(uuid, {})
+    number = entry.get("number", "")
+    ok = _terminate_call(uuid)
+    if ok and block and number:
+        session_blocked.add(number)
+    return jsonify({"ok": ok, "number": number, "blocked": block})
+
+@app.route("/api/live-calls")
+@login_required
+def live_calls():
+    """Return all active call legs: ringing and connected."""
+    with log_lock:
+        calls = [
+            {
+                "uuid":   u,
+                "number": e.get("number",""),
+                "name":   e.get("name",""),
+                "status": e.get("status",""),
+                "blocked": e.get("number","") in session_blocked,
+            }
+            for u, e in call_status_map.items()
+            if e.get("status") in ("dialing","connected")
+        ]
+    return jsonify({"calls": calls})
+
 # ── Schedule routes ───────────────────────────────────────────────────────────
 
 @app.route("/schedule/set-day", methods=["POST"])
@@ -1873,10 +2043,12 @@ def _startup_sync():
     ok, msg = sync_from_sheets()
     print(f"[startup sync] {'OK' if ok else 'FAIL'}: {msg}", flush=True)
 
+# ── Startup (runs under both gunicorn and direct python) ──────────────────────
+# Must be at module level so gunicorn picks it up
+init_db()
+threading.Thread(target=run_scheduler, daemon=True).start()
+threading.Thread(target=_startup_sync, daemon=True).start()
+
 if __name__ == "__main__":
-    init_db()
-    threading.Thread(target=run_scheduler, daemon=True).start()
-    # Always try to sync from sheets on startup - will silently skip if no sheet configured
-    threading.Thread(target=_startup_sync, daemon=True).start()
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
