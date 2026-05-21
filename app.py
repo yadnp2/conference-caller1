@@ -758,14 +758,15 @@ def _plain_ncco():
     ]
 
 def _inbound_join_ncco():
-    """NCCO for inbound callers with a press-1 prompt to announce their arrival."""
+    """NCCO for inbound callers: press 1 to join, hang up if they don't.
+    /join-announce returns the conference NCCO only if they pressed 1,
+    otherwise returns an empty NCCO which ends the call."""
     return [
         {"action": "talk",
-         "text": "Joining you into the Shmiras Halashon conference. Press 1 to announce your arrival to the group."},
+         "text": "Press 1 to join the Shmiras Halashon conference."},
         {"action": "input", "type": ["dtmf"],
          "dtmf": {"maxDigits": 1, "timeOut": 6},
          "eventUrl": [f"{BASE_URL}/join-announce"]},
-        *_conference_ncco()
     ]
 
 def _replay_ncco():
@@ -842,19 +843,24 @@ def inbound():
 
 @app.route("/join-announce", methods=["GET","POST"])
 def join_announce():
-    """Called by Vonage when an inbound caller presses a key on the join prompt."""
+    """Called by Vonage when an inbound caller presses a key on the join prompt.
+    Only joins the conference if they pressed 1. Otherwise hangs up."""
     data  = request.get_json(silent=True) or {}
     uuid  = data.get("uuid", "")
     digit = (data.get("dtmf") or {}).get("digits", "") or data.get("digits", "")
-    if str(digit).strip() == "1" and uuid and get_announcements_enabled():
-        with log_lock:
-            num = inbound_uuid_map.get(uuid, "")
-        name = get_name(num) if num else ""
-        if name:
-            threading.Thread(target=announce_join,
-                             kwargs={"name": name, "exclude_uuid": uuid, "delay": 4},
-                             daemon=True).start()
-    return jsonify(_conference_ncco())
+    if str(digit).strip() == "1":
+        if uuid and get_announcements_enabled():
+            with log_lock:
+                num = inbound_uuid_map.get(uuid, "")
+            name = get_name(num) if num else ""
+            if name:
+                threading.Thread(target=announce_join,
+                                 kwargs={"name": name, "exclude_uuid": uuid, "delay": 4},
+                                 daemon=True).start()
+        return jsonify(_conference_ncco())
+    else:
+        # They didn't press 1 — end the call
+        return jsonify([{"action": "talk", "text": "Goodbye."}])
 
 @app.route("/reading-vote", methods=["GET","POST"])
 def reading_vote():
@@ -1087,7 +1093,7 @@ def numbers_remove():
 @app.route("/numbers/pause", methods=["POST"])
 @login_required
 def numbers_pause():
-    n = request.form.get("number", "").strip()
+    n = (request.form.get("number", "") or (request.json or {}).get("number", "")).strip()
     if n:
         with numbers_lock:
             added, removed, paused = _load_local()
@@ -1098,7 +1104,7 @@ def numbers_pause():
 @app.route("/numbers/unpause", methods=["POST"])
 @login_required
 def numbers_unpause():
-    n = request.form.get("number", "").strip()
+    n = (request.form.get("number", "") or (request.json or {}).get("number", "")).strip()
     if n:
         with numbers_lock:
             added, removed, paused = _load_local()
@@ -1109,8 +1115,8 @@ def numbers_unpause():
 @app.route("/numbers/setname", methods=["POST"])
 @login_required
 def numbers_setname():
-    n    = request.form.get("number", "").strip()
-    name = request.form.get("name", "").strip()
+    n    = (request.form.get("number", "") or (request.json or {}).get("number", "")).strip()
+    name = (request.form.get("name", "") or (request.json or {}).get("name", "")).strip()
     if n:
         set_name(n, name)
     return jsonify({"ok": True, "numbers": get_all_numbers_with_source()})
@@ -1522,21 +1528,22 @@ function renderLastRun(s) {{
 }}
 
 function renderNumbers(numbers) {{
-  const count = numbers.filter(r=>!r[3]).length;
+  const active = numbers.filter(r=>!r[3]);
+  const paused_list = numbers.filter(r=>r[3]);
   document.getElementById("num-count").textContent = numbers.length;
   const ul = document.getElementById("numbers-list");
   if (!numbers.length) {{
     ul.innerHTML = "<li class='muted' style='border:none;background:none;padding:.5rem 0'>No numbers yet.</li>";
     return;
   }}
-  ul.innerHTML = numbers.map(([n, src, name, paused]) => {{
-    const li_cls     = paused ? "num-paused" : "";
-    const pause_tag  = paused ? "<span class='tag paused'>Paused</span>" : "";
-    const src_tag    = src==="sheet" ? "<span class='tag sheet'>Sheet</span>" : "";
-    const disp       = name || "<span class='muted'>No name</span>";
-    const pause_cls  = paused ? "unpause-btn" : "pause-btn";
-    const pause_lbl  = paused ? "Resume" : "Pause";
-    const pause_url  = paused ? "/numbers/unpause" : "/numbers/pause";
+
+  function renderRow([n, src, name, paused]) {{
+    const li_cls    = paused ? "num-paused" : "";
+    const pause_tag = paused ? "<span class='tag paused'>Paused</span>" : "";
+    const src_tag   = src==="sheet" ? "<span class='tag sheet'>Sheet</span>" : "";
+    const disp      = name || "<span class='muted'>No name</span>";
+    const pause_cls = paused ? "unpause-btn" : "pause-btn";
+    const pause_lbl = paused ? "Resume" : "Pause";
     return `<li class="${{li_cls}}">
       <div class="num-info"><span class="num">${{n}}</span>${{src_tag}}${{pause_tag}}<span class="nname">${{disp}}</span></div>
       <div class="num-actions">
@@ -1546,7 +1553,29 @@ function renderNumbers(numbers) {{
         <button class="rm-btn" onclick="removeNumber('${{n}}')">✕</button>
       </div>
     </li>`;
-  }}).join("");
+  }}
+
+  let html = "";
+
+  if (active.length) {{
+    html += `<li style='list-style:none;padding:.3rem 0 .2rem;border:none;background:none'>
+      <span style='font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#4ade80'>
+        ✅ Will be called (${{active.length}})
+      </span>
+    </li>`;
+    html += active.map(renderRow).join("");
+  }}
+
+  if (paused_list.length) {{
+    html += `<li style='list-style:none;padding:.5rem 0 .2rem;border:none;background:none;margin-top:.5rem'>
+      <span style='font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fb923c'>
+        ⏸ Paused — will NOT be called (${{paused_list.length}})
+      </span>
+    </li>`;
+    html += paused_list.map(renderRow).join("");
+  }}
+
+  ul.innerHTML = html;
 }}
 
 function renderSchedule(schedule) {{
@@ -1837,7 +1866,7 @@ def run_scheduler():
                 fired_today.add(ekey)
                 threading.Thread(target=start_conference, daemon=True).start()
                 break
-        time.sleep(15)
+        time.sleep(30)
 
 def _startup_sync():
     time.sleep(5)          # let Flask fully start first
@@ -1847,7 +1876,7 @@ def _startup_sync():
 if __name__ == "__main__":
     init_db()
     threading.Thread(target=run_scheduler, daemon=True).start()
-    if get_spreadsheet_id():
-        threading.Thread(target=_startup_sync, daemon=True).start()
+    # Always try to sync from sheets on startup - will silently skip if no sheet configured
+    threading.Thread(target=_startup_sync, daemon=True).start()
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
