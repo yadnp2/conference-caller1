@@ -1161,6 +1161,117 @@ STATUS_ICONS_PY = {
     "failed":     ("❌", "#f87171"), "error":      ("❌", "#f87171"),
 }
 
+@app.route("/history")
+@login_required
+def history():
+    calls = get_call_history_db(limit=200)
+    STATUS_ICONS = {
+        "connected":  ("✅", "#4ade80"), "voicemail": ("📵", "#fb923c"),
+        "dialing":    ("⏳", "#facc15"), "busy":      ("🔴", "#f87171"),
+        "unanswered": ("🔕", "#94a3b8"), "timeout":   ("🔕", "#94a3b8"),
+        "failed":     ("❌", "#f87171"), "error":     ("❌", "#f87171"),
+    }
+    rows = ""
+    for c in calls:
+        s = c.get("status", "unknown")
+        icon, color = STATUS_ICONS.get(s, ("❓", "#94a3b8"))
+        name = c.get("name", "")
+        try:
+            dt = c["run_time_et"]
+            time_str = dt.strftime("%-m/%-d %I:%M %p") if hasattr(dt, "strftime") else str(dt)
+        except Exception:
+            time_str = ""
+        rows += f"""<tr>
+            <td>{time_str}</td>
+            <td style='font-family:monospace'>{c['number']}</td>
+            <td>{name}</td>
+            <td style='color:{color}'>{icon} {s}</td>
+        </tr>"""
+    if not rows:
+        rows = "<tr><td colspan='4' style='color:#64748b;text-align:center'>No call history yet.</td></tr>"
+    return f"""<!DOCTYPE html><html lang='en'><head>
+  <meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
+  <title>Call History</title>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:-apple-system,sans-serif;background:#0f1117;color:#e2e8f0;padding:1.5rem 1rem}}
+    .wrap{{max-width:700px;margin:0 auto}}
+    h1{{font-size:1.3rem;font-weight:700;margin-bottom:1rem}}
+    a{{color:#6366f1;text-decoration:none;font-size:.85rem}}
+    table{{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:1rem}}
+    th{{text-align:left;padding:.5rem .75rem;color:#64748b;font-size:.75rem;text-transform:uppercase;border-bottom:1px solid #2d3748}}
+    td{{padding:.55rem .75rem;border-bottom:1px solid #1e2433}}
+    tr:hover td{{background:#1e2433}}
+  </style></head><body>
+  <div class='wrap'>
+    <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem'>
+      <h1>📋 Call History</h1><a href='/status'>← Back</a>
+    </div>
+    <table><thead><tr><th>Time (ET)</th><th>Number</th><th>Name</th><th>Status</th></tr></thead>
+    <tbody>{rows}</tbody></table>
+  </div></body></html>"""
+
+@app.route("/download-code")
+@login_required
+def download_code():
+    import zipfile, io
+    buf = io.BytesIO()
+    skip_dirs = {"__pycache__", ".pythonlibs", "recordings", ".replit-artifact"}
+    base = os.path.dirname(os.path.abspath(__file__))
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            for f in files:
+                if f.endswith((".pyc", ".zip")):
+                    continue
+                full = os.path.join(root, f)
+                z.write(full, os.path.relpath(full, base))
+    buf.seek(0)
+    return send_file(buf, mimetype="application/zip",
+                     as_attachment=True, download_name="conference-manager.zip")
+
+@app.route("/api/state")
+@login_required
+def api_state():
+    with log_lock:
+        run_time      = last_run["time"]
+        calls         = list(last_run["calls"])
+        inbound_calls = list(last_run["inbound_calls"])
+        running       = last_run["running"]
+    with vote_lock:
+        voted     = len(reading_session["votes"])
+        expected  = len(reading_session["expected"])
+        triggered = reading_session["triggered"]
+    rec_meta   = load_recording_meta()
+    rec_exists = os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
+    book = load_book()
+    spreadsheet_id = get_spreadsheet_id()
+    sheets_msg = session.pop("sheets_msg", "")
+    sheets_ok  = session.pop("sheets_ok", True)
+    return jsonify({
+        "running":               running,
+        "run_time":              run_time,
+        "calls":                 calls,
+        "inbound_calls":         inbound_calls,
+        "numbers":               get_all_numbers_with_source(),
+        "schedule":              load_schedule(),
+        "reading_enabled":       get_reading_enabled(),
+        "record_enabled":        get_record_enabled(),
+        "replay_enabled":        get_replay_enabled(),
+        "announcements_enabled": get_announcements_enabled(),
+        "voted":                 voted,
+        "expected":              expected,
+        "triggered":             triggered,
+        "rec_meta":              rec_meta,
+        "rec_exists":            rec_exists,
+        "book_title":            book.get("title", ""),
+        "book_total":            len(book.get("portions", [])),
+        "book_index":            book.get("current_index", 0),
+        "spreadsheet_id":        spreadsheet_id,
+        "sheets_msg":            sheets_msg,
+        "sheets_ok":             sheets_ok,
+    })
+
 @app.route("/status")
 @login_required
 def status():
