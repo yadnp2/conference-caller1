@@ -1721,8 +1721,8 @@ function renderNumbers(numbers) {{
     </div>`;
   }}
   let html='';
-  if (active.length) html+=`<div class="section-label active-label">✅ Will be called (${active.length})</div>`+active.map(row).join('');
-  if (paused.length) html+=`<div class="section-label paused-label" style="margin-top:.5rem">⏸ Paused — skipped on next call (${paused.length})</div>`+paused.map(row).join('');
+  if (active.length) html+=`<div class="section-label active-label">✅ Will be called (${{active.length}})</div>`+active.map(row).join('');
+  if (paused.length) html+=`<div class="section-label paused-label" style="margin-top:.5rem">⏸ Paused — skipped on next call (${{paused.length}})</div>`+paused.map(row).join('');
   el.innerHTML=html;
 }}
 
