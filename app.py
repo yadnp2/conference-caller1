@@ -1837,7 +1837,7 @@ def run_scheduler():
                 fired_today.add(ekey)
                 threading.Thread(target=start_conference, daemon=True).start()
                 break
-        time.sleep(30)
+        time.sleep(15)
 
 def _startup_sync():
     time.sleep(5)          # let Flask fully start first
