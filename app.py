@@ -1220,27 +1220,31 @@ def history():
             <td style='color:{color}'>{icon} {s}</td>
         </tr>"""
     if not rows:
-        rows = "<tr><td colspan='4' style='color:#64748b;text-align:center'>No call history yet.</td></tr>"
+        rows = "<tr><td colspan='4' style='color:#64748b;text-align:center;padding:2rem'>No call history yet.</td></tr>"
     return f"""<!DOCTYPE html><html lang='en'><head>
   <meta charset='UTF-8'/><meta name='viewport' content='width=device-width,initial-scale=1'/>
-  <title>Call History</title>
+  <title>Call History — Conference Manager</title>
   <style>
     *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:-apple-system,sans-serif;background:#0f1117;color:#e2e8f0;padding:1.5rem 1rem}}
-    .wrap{{max-width:700px;margin:0 auto}}
-    h1{{font-size:1.3rem;font-weight:700;margin-bottom:1rem}}
+    body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0e1a;color:#e2e8f0;padding:1.5rem 1rem 3rem;min-height:100vh}}
+    .wrap{{max-width:720px;margin:0 auto}}
+    h1{{font-size:1.3rem;font-weight:700;margin-bottom:1.25rem;display:flex;align-items:center;gap:.5rem}}
     a{{color:#6366f1;text-decoration:none;font-size:.85rem}}
-    table{{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:1rem}}
-    th{{text-align:left;padding:.5rem .75rem;color:#64748b;font-size:.75rem;text-transform:uppercase;border-bottom:1px solid #2d3748}}
-    td{{padding:.55rem .75rem;border-bottom:1px solid #1e2433}}
-    tr:hover td{{background:#1e2433}}
+    .card{{background:#111827;border:1px solid #1f2937;border-radius:14px;overflow:hidden}}
+    table{{width:100%;border-collapse:collapse;font-size:.85rem}}
+    th{{text-align:left;padding:.65rem 1rem;color:#4b5563;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #1f2937;background:#0d1421}}
+    td{{padding:.6rem 1rem;border-bottom:1px solid #111827}}
+    tr:last-child td{{border-bottom:none}}
+    tr:hover td{{background:#0d1421}}
   </style></head><body>
   <div class='wrap'>
-    <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem'>
-      <h1>📋 Call History</h1><a href='/status'>← Back</a>
+    <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem'>
+      <h1>📋 Call History</h1><a href='/status'>← Back to Dashboard</a>
     </div>
-    <table><thead><tr><th>Time (ET)</th><th>Number</th><th>Name</th><th>Status</th></tr></thead>
-    <tbody>{rows}</tbody></table>
+    <div class='card'>
+      <table><thead><tr><th>Time (ET)</th><th>Number</th><th>Name</th><th>Status</th></tr></thead>
+      <tbody>{rows}</tbody></table>
+    </div>
   </div></body></html>"""
 
 @app.route("/download-code")
@@ -1309,227 +1313,348 @@ def api_state():
 def status():
     raw = FROM_NUMBER.lstrip("1") if FROM_NUMBER.startswith("1") else FROM_NUMBER
     dial_in_fmt = (f"({raw[0:3]}) {raw[3:6]}-{raw[6:10]}" if len(raw) >= 10 else FROM_NUMBER)
-    days_json = '["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]'
     return f"""<!DOCTYPE html>
 <html lang='en'><head>
   <meta charset='UTF-8'/>
   <meta name='viewport' content='width=device-width,initial-scale=1'/>
   <title>Conference Manager</title>
   <link rel='manifest' href='/manifest.json'/>
-  <meta name='theme-color' content='#1e2433'/>
+  <meta name='theme-color' content='#0a0f1e'/>
   <meta name='apple-mobile-web-app-capable' content='yes'/>
   <meta name='apple-mobile-web-app-status-bar-style' content='black-translucent'/>
-  <meta name='apple-mobile-web-app-title' content='Conference'/>
-  <link rel='apple-touch-icon' href='/static/icon.svg'/>
+  <link rel='preconnect' href='https://fonts.googleapis.com'/>
+  <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin/>
+  <link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap' rel='stylesheet'/>
   <style>
+    :root {{
+      --bg:        #0a0f1e;
+      --surface:   #111827;
+      --surface2:  #1a2235;
+      --border:    #1f2d45;
+      --border2:   #2a3a55;
+      --text:      #f0f4ff;
+      --text2:     #8899bb;
+      --text3:     #4a5f80;
+      --blue:      #3b82f6;
+      --blue-dark: #1d4ed8;
+      --blue-glow: rgba(59,130,246,.15);
+      --green:     #22c55e;
+      --green-dim: #14532d;
+      --orange:    #f97316;
+      --orange-dim:#431407;
+      --red:       #ef4444;
+      --red-dim:   #450a0a;
+      --purple:    #a78bfa;
+      --yellow:    #fbbf24;
+      --radius:    12px;
+      --radius-sm: 8px;
+      --shadow:    0 4px 24px rgba(0,0,0,.4);
+    }}
     *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e2e8f0;padding:1.5rem 1rem 3rem;min-height:100vh}}
-    .wrap{{max-width:580px;margin:0 auto;display:flex;flex-direction:column;gap:1.75rem}}
-    h1{{font-size:1.4rem;font-weight:700;color:#f8fafc}}
-    h2{{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:.6rem}}
-    .muted{{color:#64748b}}
-    .trigger-btn{{width:100%;padding:.85rem;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer}}
-    .trigger-btn:hover:not([disabled]){{background:#1d4ed8}}
-    .trigger-btn[disabled]{{background:#1e3a5f;color:#64748b;cursor:not-allowed}}
-    .summary{{display:flex;justify-content:space-between;align-items:flex-start;background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.7rem 1rem;font-size:.85rem;margin-bottom:.5rem;gap:.5rem}}
-    .live{{color:#4ade80;font-weight:700;margin-left:.35rem}}
-    .counts{{font-weight:700;color:#4ade80;white-space:nowrap}}
-    .vote-count{{color:#a5b4fc;font-size:.8rem}}
-    .vote-done{{color:#4ade80;font-size:.8rem}}
-    .toggle-row{{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}}
-    .toggle-btn{{border:none;border-radius:8px;padding:.45rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .toggle-on{{background:#14532d;color:#86efac}}
-    .toggle-on:hover{{background:#166534}}
-    .toggle-off{{background:#1e2433;color:#64748b;border:1px solid #2d3748}}
-    .toggle-off:hover{{border-color:#6366f1;color:#a5b4fc}}
-    .dial-box{{background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.7rem 1rem;font-size:.9rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem}}
-    .dial-num{{font-family:monospace;font-size:1rem;font-weight:700;color:#f8fafc;letter-spacing:.04em}}
-    .day-grid{{display:flex;flex-direction:column;gap:.5rem}}
-    .day-row{{display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-radius:8px;background:#1a2035;border:1px solid #2d3748;transition:border-color .15s;flex-wrap:wrap}}
-    .day-row.active{{border-color:#3b82f6;background:#1b2a45}}
-    .day-name{{min-width:88px;font-size:.88rem;color:#e2e8f0;font-weight:600}}
+    body{{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:0 0 5rem}}
+    a{{color:var(--blue);text-decoration:none}}
+    a:hover{{text-decoration:underline}}
+
+    /* ── Layout ── */
+    .topbar{{background:var(--surface);border-bottom:1px solid var(--border);padding:.85rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}}
+    .topbar-brand{{display:flex;align-items:center;gap:.6rem}}
+    .topbar-icon{{width:28px;height:28px;background:linear-gradient(135deg,#3b82f6,#6366f1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.9rem}}
+    .topbar-title{{font-size:1rem;font-weight:700;color:var(--text)}}
+    .topbar-right{{display:flex;align-items:center;gap:.75rem}}
+    .signout-btn{{background:none;border:1px solid var(--border2);color:var(--text2);border-radius:var(--radius-sm);padding:.35rem .85rem;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}}
+    .signout-btn:hover{{border-color:var(--blue);color:var(--text)}}
+
+    .page{{max-width:640px;margin:0 auto;padding:1.5rem 1rem}}
+    .grid{{display:flex;flex-direction:column;gap:1.25rem}}
+
+    /* ── Cards ── */
+    .card{{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.25rem 1rem;box-shadow:var(--shadow)}}
+    .card-header{{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}}
+    .card-title{{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}}
+    .card-badge{{font-size:.72rem;font-weight:700;padding:.2rem .55rem;border-radius:999px}}
+    .badge-green{{background:rgba(34,197,94,.15);color:var(--green)}}
+    .badge-orange{{background:rgba(249,115,22,.15);color:var(--orange)}}
+    .badge-blue{{background:rgba(59,130,246,.15);color:var(--blue)}}
+
+    /* ── Trigger ── */
+    .trigger-btn{{width:100%;padding:1rem;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;border:none;border-radius:var(--radius);font-size:1rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;letter-spacing:.02em;transition:all .2s;box-shadow:0 4px 20px rgba(59,130,246,.3)}}
+    .trigger-btn:hover:not([disabled]){{transform:translateY(-1px);box-shadow:0 6px 28px rgba(59,130,246,.45)}}
+    .trigger-btn[disabled]{{background:linear-gradient(135deg,#1e3a5f,#2a2f6e);color:var(--text3);cursor:not-allowed;box-shadow:none;transform:none}}
+    .live-dot{{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;margin-right:.4rem;animation:pulse 1.5s infinite}}
+    @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.4}}}}
+
+    /* ── Dial-in ── */
+    .dialin-box{{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.85rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem}}
+    .dialin-label{{font-size:.8rem;color:var(--text2)}}
+    .dialin-num{{font-family:'Inter',sans-serif;font-size:1.1rem;font-weight:700;color:var(--text);letter-spacing:.06em}}
+
+    /* ── Last run ── */
+    .run-meta{{display:flex;justify-content:space-between;align-items:center;font-size:.8rem;color:var(--text2);margin-bottom:.75rem;padding:.6rem .85rem;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)}}
+    .run-counts{{font-weight:700;color:var(--green)}}
+    .calls-list{{display:flex;flex-direction:column;gap:.35rem}}
+    .call-row{{display:flex;align-items:center;gap:.6rem;padding:.55rem .85rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.83rem}}
+    .call-icon{{min-width:1.1rem;text-align:center}}
+    .call-num{{font-family:'Inter',sans-serif;font-weight:600;color:var(--text)}}
+    .call-name{{color:var(--text2);font-size:.78rem;flex:1}}
+    .call-stat{{font-weight:600;font-size:.78rem;text-transform:capitalize}}
+    .call-type-tag{{font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:999px;margin-left:auto;white-space:nowrap}}
+    .tag-dialed{{background:rgba(59,130,246,.15);color:#7dd3fc}}
+    .tag-live{{background:rgba(34,197,94,.12);color:#6ee7b7}}
+    .tag-replay{{background:rgba(167,139,250,.12);color:#c4b5fd}}
+
+    /* ── Numbers ── */
+    .num-list{{display:flex;flex-direction:column;gap:.35rem}}
+    .section-label{{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:.35rem 0 .2rem;display:flex;align-items:center;gap:.4rem}}
+    .section-label.active-label{{color:var(--green)}}
+    .section-label.paused-label{{color:var(--orange)}}
+    .num-row{{display:flex;align-items:center;gap:.5rem;padding:.6rem .85rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);transition:border-color .15s}}
+    .num-row:hover{{border-color:var(--border2)}}
+    .num-row.is-paused{{opacity:.6;border-style:dashed}}
+    .num-main{{flex:1;min-width:0}}
+    .num-phone{{font-family:'Inter',sans-serif;font-weight:600;font-size:.85rem;color:var(--text)}}
+    .num-name-display{{font-size:.75rem;color:var(--text2);margin-top:.1rem}}
+    .tag{{font-size:.65rem;font-weight:700;padding:.1rem .38rem;border-radius:4px;letter-spacing:.03em;margin-left:.3rem}}
+    .tag-sheet{{background:rgba(59,130,246,.15);color:#7dd3fc}}
+    .tag-paused-small{{background:rgba(249,115,22,.15);color:var(--orange)}}
+    .num-actions{{display:flex;align-items:center;gap:.35rem;flex-shrink:0}}
+    .name-inp{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:.28rem .55rem;font-size:.78rem;font-family:'Inter',sans-serif;width:90px}}
+    .name-inp:focus{{outline:none;border-color:var(--blue)}}
+    .btn-save{{background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.3);border-radius:6px;padding:.28rem .6rem;font-size:.75rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
+    .btn-save:hover{{background:rgba(59,130,246,.25)}}
+    .btn-pause{{background:rgba(249,115,22,.1);color:var(--orange);border:1px solid rgba(249,115,22,.25);border-radius:6px;padding:.28rem .6rem;font-size:.75rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
+    .btn-pause:hover{{background:rgba(249,115,22,.2)}}
+    .btn-resume{{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25);border-radius:6px;padding:.28rem .6rem;font-size:.75rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
+    .btn-resume:hover{{background:rgba(34,197,94,.2)}}
+    .btn-remove{{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:.28rem .5rem;font-size:.75rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-remove:hover{{background:rgba(239,68,68,.2)}}
+    .add-row{{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.85rem}}
+    .add-inp{{flex:1;min-width:100px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius-sm);padding:.6rem .85rem;font-size:.85rem;font-family:'Inter',sans-serif}}
+    .add-inp:focus{{outline:none;border-color:var(--blue)}}
+    .btn-add{{background:linear-gradient(135deg,#15803d,#16a34a);color:#fff;border:none;border-radius:var(--radius-sm);padding:.6rem 1.1rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
+    .btn-add:hover{{background:linear-gradient(135deg,#16a34a,#22c55e)}}
+
+    /* ── Schedule spinners ── */
+    .day-grid{{display:flex;flex-direction:column;gap:.45rem}}
+    .day-row{{display:flex;align-items:center;gap:.6rem;padding:.6rem .85rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);flex-wrap:wrap;transition:border-color .2s}}
+    .day-row.active{{border-color:var(--blue);background:rgba(59,130,246,.05)}}
+    .day-name{{min-width:84px;font-size:.85rem;font-weight:600;color:var(--text)}}
     .day-form{{display:flex;align-items:center;gap:.4rem;flex:1;flex-wrap:wrap}}
-    .spinner-wrap{{display:flex;flex-direction:column;align-items:center;gap:0}}
-    .spinner-val{{background:#0f172a;border:1px solid #2d3748;color:#e2e8f0;border-radius:6px;padding:.28rem 0;font-size:.95rem;font-weight:700;text-align:center;width:2.4rem;cursor:default;user-select:none}}
-    .spinner-btn{{background:none;border:none;color:#94a3b8;font-size:.7rem;line-height:1;cursor:pointer;padding:.05rem .5rem}}
-    .spinner-btn:hover{{color:#e2e8f0}}
-    .ampm-btn{{background:#1e2433;border:1px solid #2d3748;color:#94a3b8;border-radius:6px;padding:.28rem .55rem;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .ampm-btn.active{{background:#1d4ed8;color:#fff;border-color:#1d4ed8}}
-    .sep{{color:#64748b;font-size:1rem;font-weight:700;padding:0 .1rem}}
-    .set-btn{{background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:.38rem .8rem;font-size:.82rem;cursor:pointer;white-space:nowrap}}
-    .set-btn:hover{{background:#2563eb}}
-    .day-clear{{background:none;border:none;color:#f87171;font-size:1.05rem;cursor:pointer;padding:.1rem .35rem;line-height:1}}
-    ul{{list-style:none;display:flex;flex-direction:column;gap:.4rem}}
-    ul.calls li{{display:flex;align-items:center;gap:.6rem;background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.6rem 1rem;font-size:.85rem;flex-wrap:wrap}}
-    .icon{{min-width:1.2rem}}
-    .num{{font-family:monospace}}
-    .cname{{color:#94a3b8;font-size:.8rem;margin-left:.2rem;flex:1}}
-    .stat{{font-weight:600;text-transform:capitalize;font-size:.8rem}}
-    .err-text{{color:#f87171;font-size:.75rem}}
-    .call-type{{font-size:.72rem;font-weight:600;padding:.15rem .5rem;border-radius:999px;margin-left:auto;white-space:nowrap}}
-    .call-type.dialed-out{{background:#1e3a5f;color:#7dd3fc}}
-    .call-type.inbound-live{{background:#0c3b2e;color:#6ee7b7}}
-    .call-type.inbound-replay{{background:#2e1b4e;color:#c4b5fd}}
-    ul.nums li{{background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.65rem .85rem;display:flex;flex-direction:column;gap:.5rem}}
-    .num-info{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}}
-    .nname{{color:#94a3b8;font-size:.8rem;margin-left:auto}}
-    .num-actions{{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}}
-    .name-input{{flex:1;background:#0f1117;border:1px solid #2d3748;color:#e2e8f0;border-radius:6px;padding:.3rem .6rem;font-size:.8rem;min-width:80px}}
-    .name-input:focus{{outline:none;border-color:#3b82f6}}
-    .save-btn{{background:#1e3a5f;color:#93c5fd;border:none;border-radius:6px;padding:.3rem .65rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .save-btn:hover{{background:#1d4ed8;color:#fff}}
-    .tag{{font-size:.68rem;font-weight:700;padding:.12rem .4rem;border-radius:4px;letter-spacing:.04em}}
-    .tag.sheet{{background:#1d3461;color:#93c5fd}}
-    .tag.local{{background:#14532d;color:#86efac}}
-    .tag.paused{{background:#422006;color:#fb923c}}
-    .pause-btn{{background:#292524;color:#fb923c;border:1px solid #422006;border-radius:6px;padding:.3rem .6rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .pause-btn:hover{{background:#422006}}
-    .unpause-btn{{background:#14532d;color:#86efac;border:none;border-radius:6px;padding:.3rem .6rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .unpause-btn:hover{{background:#166534}}
-    ul.nums li.num-paused{{opacity:.55;border-style:dashed}}
-    .add-row{{display:flex;gap:.5rem;flex-wrap:wrap}}
-    .add-row input{{flex:1;min-width:100px;background:#1e2433;border:1px solid #2d3748;color:#e2e8f0;border-radius:8px;padding:.6rem .85rem;font-size:.85rem}}
-    .add-row input:focus{{outline:none;border-color:#3b82f6}}
-    .add-btn{{background:#15803d;color:#fff;border:none;border-radius:8px;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer}}
-    .add-btn:hover{{background:#166534}}
-    .rm-btn{{background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;padding:.3rem .6rem;font-size:.78rem;font-weight:700;cursor:pointer}}
-    .rm-btn:hover{{background:#991b1b}}
-    .book-info{{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;font-size:.85rem}}
-    .book-title{{font-weight:700}}
-    .book-btns{{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem}}
-    .sec-btn{{background:#1e2433;color:#e2e8f0;border:1px solid #2d3748;border-radius:8px;padding:.5rem 1rem;font-size:.85rem;font-weight:600;cursor:pointer}}
-    .sec-btn:hover{{border-color:#6366f1;color:#a5b4fc}}
-    .upload-form{{display:flex;flex-direction:column;gap:.6rem;margin-top:.75rem}}
-    .upload-form input{{background:#1e2433;border:1px solid #2d3748;color:#e2e8f0;border-radius:8px;padding:.55rem .85rem;font-size:.85rem;width:100%}}
-    .upload-form input[type=file]{{color:#94a3b8}}
-    .upload-btn{{background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer}}
-    .upload-btn:hover{{background:#4338ca}}
-    .hint{{font-size:.75rem;color:#475569;line-height:1.5}}
-    .footer{{font-size:.73rem;color:#374151;text-align:center}}
-    details summary{{cursor:pointer;font-size:.85rem;color:#6366f1;font-weight:600;user-select:none}}
-    #install-banner{{display:none;align-items:center;justify-content:space-between;gap:.75rem;background:#1a2744;border:1px solid #2563eb;border-radius:10px;padding:.75rem 1rem;font-size:.85rem}}
-    #install-banner span{{color:#93c5fd}}
-    .install-btn{{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:.45rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .install-btn:hover{{background:#1d4ed8}}
-    .dismiss-btn{{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.2rem .4rem}}
-    .toast{{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1e2433;border:1px solid #2d3748;color:#e2e8f0;padding:.6rem 1.25rem;border-radius:10px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}}
+    .spinner-wrap{{display:flex;flex-direction:column;align-items:center;gap:1px}}
+    .spinner-btn{{background:none;border:none;color:var(--text3);font-size:.65rem;line-height:1;cursor:pointer;padding:.06rem .5rem;font-family:'Inter',sans-serif;transition:color .1s}}
+    .spinner-btn:hover{{color:var(--text)}}
+    .spinner-val{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:.28rem 0;font-size:.95rem;font-weight:700;text-align:center;width:2.4rem;font-family:'Inter',sans-serif}}
+    .sep{{color:var(--text3);font-size:1rem;font-weight:700;padding:0 .05rem}}
+    .ampm-group{{display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden}}
+    .ampm-opt{{background:var(--bg);color:var(--text3);border:none;padding:.28rem .55rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}}
+    .ampm-opt.selected{{background:var(--blue);color:#fff}}
+    .ampm-opt:hover:not(.selected){{color:var(--text)}}
+    .btn-set{{background:linear-gradient(135deg,var(--blue-dark),var(--blue));color:#fff;border:none;border-radius:6px;padding:.32rem .85rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
+    .btn-set:hover{{opacity:.9}}
+    .btn-clear-day{{background:none;border:none;color:var(--red);font-size:1rem;cursor:pointer;padding:.1rem .3rem;line-height:1;opacity:.7}}
+    .btn-clear-day:hover{{opacity:1}}
+    .sched-hint{{font-size:.74rem;color:var(--text3);margin-top:.5rem}}
+
+    /* ── Toggles ── */
+    .toggle-row{{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;padding:.5rem 0}}
+    .toggle-row+.toggle-row{{border-top:1px solid var(--border)}}
+    .toggle-btn{{border:none;border-radius:20px;padding:.38rem 1rem;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;white-space:nowrap}}
+    .toggle-on{{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}}
+    .toggle-on:hover{{background:rgba(34,197,94,.25)}}
+    .toggle-off{{background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}}
+    .toggle-off:hover{{border-color:var(--blue);color:var(--text)}}
+    .toggle-hint{{font-size:.76rem;color:var(--text3);line-height:1.4;flex:1}}
+
+    /* ── Hangup ── */
+    .hangup-all-row{{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem}}
+    .btn-hangup-all{{flex:1;padding:.65rem;background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3);border-radius:var(--radius-sm);font-size:.85rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}}
+    .btn-hangup-all:hover{{background:rgba(239,68,68,.25)}}
+    .btn-hangup-block{{flex:1;padding:.65rem;background:rgba(249,115,22,.12);color:var(--orange);border:1px solid rgba(249,115,22,.25);border-radius:var(--radius-sm);font-size:.85rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}}
+    .btn-hangup-block:hover{{background:rgba(249,115,22,.22)}}
+    .live-row{{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.55rem .85rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.83rem;margin-bottom:.35rem}}
+    .live-info{{flex:1;min-width:0}}
+    .live-actions{{display:flex;gap:.35rem}}
+    .btn-hup{{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:.25rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-hup:hover{{background:rgba(239,68,68,.25)}}
+    .btn-hup-block{{background:rgba(249,115,22,.1);color:var(--orange);border:1px solid rgba(249,115,22,.2);border-radius:6px;padding:.25rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-hup-block:hover{{background:rgba(249,115,22,.2)}}
+
+    /* ── Recording / Book ── */
+    .rec-meta{{font-size:.78rem;color:var(--text2);margin:.5rem 0 0;padding:.5rem .75rem;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)}}
+    .btn-dl{{display:inline-flex;align-items:center;gap:.35rem;background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.25);border-radius:var(--radius-sm);padding:.4rem .85rem;font-size:.8rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;text-decoration:none;margin-top:.5rem}}
+    .btn-dl:hover{{background:rgba(59,130,246,.2);text-decoration:none}}
+    .book-info-row{{display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.83rem;margin-bottom:.5rem}}
+    .book-actions{{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem}}
+    .btn-sec{{background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:.45rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-sec:hover{{border-color:var(--blue);color:var(--blue)}}
+    details summary{{cursor:pointer;font-size:.82rem;color:var(--blue);font-weight:600;user-select:none;padding:.3rem 0}}
+    details summary:hover{{color:#60a5fa}}
+    .upload-form{{display:flex;flex-direction:column;gap:.6rem;margin-top:.75rem;padding:.85rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm)}}
+    .upload-form input{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius-sm);padding:.55rem .85rem;font-size:.82rem;font-family:'Inter',sans-serif;width:100%}}
+    .upload-form input[type=file]{{color:var(--text2)}}
+    .upload-form input:focus{{outline:none;border-color:var(--blue)}}
+    .btn-upload{{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:var(--radius-sm);padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .hint{{font-size:.73rem;color:var(--text3);line-height:1.5}}
+
+    /* ── Sheets ── */
+    .sheets-row{{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}}
+    .btn-sync{{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25);border-radius:var(--radius-sm);padding:.45rem 1rem;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-sync:hover{{background:rgba(34,197,94,.2)}}
+    .sheets-msg-ok{{color:var(--green);font-size:.78rem}}
+    .sheets-msg-err{{color:var(--red);font-size:.78rem}}
+
+    /* ── Footer ── */
+    .footer-links{{display:flex;justify-content:center;gap:1.25rem;padding:1rem 0;font-size:.76rem;color:var(--text3)}}
+    .footer-links a{{color:var(--text3);transition:color .15s}}
+    .footer-links a:hover{{color:var(--blue);text-decoration:none}}
+
+    /* ── Toast ── */
+    .toast{{position:fixed;bottom:1.75rem;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:.6rem 1.4rem;border-radius:999px;font-size:.83rem;font-weight:500;opacity:0;transition:opacity .25s;pointer-events:none;z-index:999;box-shadow:var(--shadow);white-space:nowrap}}
     .toast.show{{opacity:1}}
-    .hangup-all-btn{{width:100%;padding:.7rem;background:#7f1d1d;color:#fca5a5;border:none;border-radius:8px;font-size:.9rem;font-weight:700;cursor:pointer;margin-bottom:.75rem}}
-    .hangup-all-btn:hover{{background:#991b1b}}
-    .live-call-row{{display:flex;align-items:center;justify-content:space-between;gap:.5rem;background:#1e2433;border:1px solid #2d3748;border-radius:8px;padding:.6rem .85rem;font-size:.85rem}}
-    .hangup-opts{{display:flex;gap:.4rem}}
-    .hup-btn{{background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;padding:.28rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .hup-btn:hover{{background:#991b1b}}
-    .hup-block-btn{{background:#422006;color:#fb923c;border:none;border-radius:6px;padding:.28rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap}}
-    .hup-block-btn:hover{{background:#7c2d12}}
+
+    /* ── Install banner ── */
+    #install-banner{{display:none;align-items:center;justify-content:space-between;gap:.75rem;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:var(--radius-sm);padding:.65rem 1rem;font-size:.82rem;margin-bottom:.75rem}}
+    #install-banner span{{color:var(--text2)}}
+    .btn-install{{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:.38rem .9rem;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-dismiss{{background:none;border:none;color:var(--text3);cursor:pointer;font-size:1rem;padding:.2rem .4rem}}
   </style>
 </head>
-<body><div class='wrap'>
+<body>
 
-  <div id='install-banner'>
-    <span>Install this app on your device for quick access.</span>
-    <div style='display:flex;gap:.5rem;align-items:center'>
-      <button class='install-btn' id='install-btn'>Install App</button>
-      <button class='dismiss-btn' id='dismiss-btn' title='Dismiss'>✕</button>
-    </div>
+<!-- Top Bar -->
+<div class='topbar'>
+  <div class='topbar-brand'>
+    <div class='topbar-icon'>📞</div>
+    <span class='topbar-title'>Conference Manager</span>
   </div>
-
-  <div style='display:flex;justify-content:space-between;align-items:center'>
-    <h1>Conference Manager</h1>
-    <form method='POST' action='/logout'>
-      <button style='background:none;border:1px solid #2d3748;color:#64748b;border-radius:8px;padding:.35rem .75rem;font-size:.78rem;cursor:pointer'>Sign out</button>
+  <div class='topbar-right'>
+    <form method='POST' action='/logout' style='margin:0'>
+      <button class='signout-btn'>Sign out</button>
     </form>
   </div>
-
-  <section>
-    <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶ Start Conference Now</button>
-  </section>
-
-  <section id='hangup-section' style='display:none'>
-    <h2>🔴 End Conference</h2>
-    <div id='hangup-controls'></div>
-  </section>
-
-  <section>
-    <h2>Dial-In Number</h2>
-    <div class='dial-box'>
-      <span class='muted'>Participants can call in directly:</span>
-      <span class='dial-num'>{dial_in_fmt}</span>
-    </div>
-  </section>
-
-  <section>
-    <h2>Last Conference</h2>
-    <div id='last-run'><p class='muted'>Loading...</p></div>
-  </section>
-
-  <section>
-    <h2>Phone Numbers (<span id='num-count'>0</span>)</h2>
-    <div class='add-row' style='margin-bottom:.75rem'>
-      <input type='tel'  id='new-number' placeholder='Number, e.g. 2025551234'/>
-      <input type='text' id='new-name'   placeholder='Name (optional)'/>
-      <button class='add-btn' onclick='addNumber()'>+ Add</button>
-    </div>
-    <ul class='nums' id='numbers-list'><li class='muted'>Loading...</li></ul>
-  </section>
-
-  <section>
-    <h2>Schedule</h2>
-    <div class='day-grid' id='day-grid'><p class='muted'>Loading...</p></div>
-    <p class='hint' style='margin-top:.6rem'>Times are Eastern (ET). Changes take effect immediately.</p>
-  </section>
-
-  <section>
-    <h2>Daily Reading</h2>
-    <div id='reading-section'><p class='muted'>Loading...</p></div>
-    <details id='book-upload-details'>
-      <summary id='book-upload-summary'>Upload a book (.txt)</summary>
-      <form id='book-upload-form' class='upload-form'>
-        <input type='file'   name='book'              accept='.txt' required/>
-        <input type='text'   name='title'             placeholder='Book title (optional)'/>
-        <input type='number' name='lines_per_portion' value='30' min='5' max='200'/>
-        <p class='hint'>Upload a plain .txt file. Each portion is read aloud via text-to-speech only if all participants vote yes.</p>
-        <button type='button' class='upload-btn' onclick='uploadBook()'>Upload &amp; Split</button>
-      </form>
-    </details>
-  </section>
-
-  <section>
-    <h2>Recording</h2>
-    <div id='recording-section'><p class='muted'>Loading...</p></div>
-  </section>
-
-  <section>
-    <h2>Join Announcements</h2>
-    <div id='announcements-section'><p class='muted'>Loading...</p></div>
-  </section>
-
-  <section>
-    <h2>Google Sheets Sync</h2>
-    <p class='muted' style='font-size:.82rem;margin-bottom:.75rem'>
-      Numbers sync automatically from your Google Sheet on startup.
-      Column A&nbsp;=&nbsp;name, Column B&nbsp;=&nbsp;number, row&nbsp;1&nbsp;=&nbsp;header.
-    </p>
-    <div id='sheets-section'><p class='muted'>Loading...</p></div>
-  </section>
-
-  <p class='footer'><span class='tag paused'>Paused</span> numbers are skipped on the next call &nbsp;|&nbsp; <a href='/history' style='color:#6366f1;text-decoration:none'>Call History</a> &nbsp;|&nbsp; <a href='/download-code' style='color:#6366f1;text-decoration:none'>⬇ Download Code</a></p>
-  <div class='toast' id='toast'></div>
 </div>
 
+<div class='page'>
+  <div class='grid'>
+
+    <!-- Install Banner -->
+    <div id='install-banner'>
+      <span>📱 Install this app on your device for quick access.</span>
+      <div style='display:flex;gap:.4rem;align-items:center'>
+        <button class='btn-install' id='install-btn'>Install</button>
+        <button class='btn-dismiss' id='dismiss-btn'>✕</button>
+      </div>
+    </div>
+
+    <!-- START CONFERENCE -->
+    <div class='card'>
+      <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶ &nbsp;Start Conference Now</button>
+    </div>
+
+    <!-- HANGUP (hidden until active) -->
+    <div class='card' id='hangup-section' style='display:none'>
+      <div class='card-header'><span class='card-title'>🔴 &nbsp;Active Call Controls</span></div>
+      <div id='hangup-controls'></div>
+    </div>
+
+    <!-- DIAL-IN -->
+    <div class='card'>
+      <div class='card-header'><span class='card-title'>Dial-In Number</span></div>
+      <div class='dialin-box'>
+        <span class='dialin-label'>Members call in directly:</span>
+        <span class='dialin-num'>{dial_in_fmt}</span>
+      </div>
+    </div>
+
+    <!-- LAST CONFERENCE -->
+    <div class='card'>
+      <div class='card-header'>
+        <span class='card-title'>Last Conference</span>
+        <a href='/history' style='font-size:.75rem;color:var(--blue)'>Full history →</a>
+      </div>
+      <div id='last-run'><p style='color:var(--text3);font-size:.85rem'>Loading...</p></div>
+    </div>
+
+    <!-- PHONE NUMBERS -->
+    <div class='card'>
+      <div class='card-header'>
+        <span class='card-title'>Phone Numbers</span>
+        <span class='card-badge badge-blue' id='num-count'>0</span>
+      </div>
+      <div class='add-row'>
+        <input type='tel'  class='add-inp' id='new-number' placeholder='Number e.g. 2025551234'/>
+        <input type='text' class='add-inp' id='new-name'   placeholder='Name (optional)'/>
+        <button class='btn-add' onclick='addNumber()'>+ Add</button>
+      </div>
+      <div class='num-list' id='numbers-list'><p style='color:var(--text3);font-size:.85rem'>Loading...</p></div>
+    </div>
+
+    <!-- SCHEDULE -->
+    <div class='card'>
+      <div class='card-header'><span class='card-title'>Schedule</span></div>
+      <div class='day-grid' id='day-grid'><p style='color:var(--text3);font-size:.85rem'>Loading...</p></div>
+      <p class='sched-hint'>All times are Eastern (ET). Press Set to save a time.</p>
+    </div>
+
+    <!-- DAILY READING -->
+    <div class='card'>
+      <div class='card-header'><span class='card-title'>Daily Reading</span></div>
+      <div id='reading-section'><p style='color:var(--text3);font-size:.85rem'>Loading...</p></div>
+      <details id='book-upload-details' style='margin-top:.75rem'>
+        <summary id='book-upload-summary'>Upload a book (.txt)</summary>
+        <form id='book-upload-form' class='upload-form'>
+          <input type='file'   name='book'              accept='.txt' required/>
+          <input type='text'   name='title'             placeholder='Book title (optional)'/>
+          <input type='number' name='lines_per_portion' value='30' min='5' max='200'/>
+          <p class='hint'>Upload a plain .txt file. Participants vote by pressing 1 to hear it read aloud.</p>
+          <button type='button' class='btn-upload' onclick='uploadBook()'>Upload &amp; Split</button>
+        </form>
+      </details>
+    </div>
+
+    <!-- RECORDING -->
+    <div class='card'>
+      <div class='card-header'><span class='card-title'>Recording</span></div>
+      <div id='recording-section'><p style='color:var(--text3);font-size:.85rem'>Loading...</p></div>
+    </div>
+
+    <!-- JOIN ANNOUNCEMENTS -->
+    <div class='card'>
+      <div class='card-header'><span class='card-title'>Join Announcements</span></div>
+      <div id='announcements-section'><p style='color:var(--text3);font-size:.85rem'>Loading...</p></div>
+    </div>
+
+    <!-- GOOGLE SHEETS -->
+    <div class='card'>
+      <div class='card-header'><span class='card-title'>Google Sheets Sync</span></div>
+      <p style='font-size:.78rem;color:var(--text2);margin-bottom:.75rem'>Numbers sync automatically on startup. Column A&nbsp;=&nbsp;name, Column B&nbsp;=&nbsp;number, row&nbsp;1&nbsp;=&nbsp;header.</p>
+      <div id='sheets-section'><p style='color:var(--text3);font-size:.85rem'>Loading...</p></div>
+    </div>
+
+  </div><!-- /grid -->
+
+  <!-- Footer -->
+  <div class='footer-links'>
+    <a href='/history'>📋 Call History</a>
+    <a href='/download-code'>⬇ Download Code</a>
+  </div>
+
+</div><!-- /page -->
+
+<div class='toast' id='toast'></div>
+
 <script>
-const DAYS = {days_json};
+const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const STATUS_ICONS = {{
-  connected:["✅","#4ade80"], voicemail:["📵","#fb923c"],
-  dialing:["⏳","#facc15"],   busy:["🔴","#f87171"],
-  unanswered:["🔕","#94a3b8"],timeout:["🔕","#94a3b8"],
-  failed:["❌","#f87171"],    error:["❌","#f87171"],
+  connected:["✅","#22c55e"], voicemail:["📵","#f97316"],
+  dialing:["⏳","#fbbf24"],   busy:["🔴","#ef4444"],
+  unanswered:["🔕","#8899bb"],timeout:["🔕","#8899bb"],
+  failed:["❌","#ef4444"],    error:["❌","#ef4444"],
 }};
 
-function toast(msg, dur=2200) {{
+function toast(msg, dur=2400) {{
   const t = document.getElementById("toast");
-  t.textContent = msg; t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), dur);
+  t.textContent=msg; t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), dur);
 }}
 
 async function post(url, data={{}}, isForm=false) {{
@@ -1537,143 +1662,96 @@ async function post(url, data={{}}, isForm=false) {{
     ? {{method:"POST", body:data}}
     : {{method:"POST", headers:{{"Content-Type":"application/json"}}, body:JSON.stringify(data)}};
   const r = await fetch(url, opts);
-  return r.json().catch(() => ({{ok:false}}));
+  return r.json().catch(()=>({{ok:false}}));
 }}
 
-// ── Render functions ────────────────────────────────────────────────────────
-
+// ── Last Run ────────────────────────────────────────────────────────────────
 function renderLastRun(s) {{
   const el  = document.getElementById("last-run");
   const btn = document.getElementById("trigger-btn");
-  if (s.running) {{ btn.disabled=true; btn.textContent="● Running…"; }}
-  else           {{ btn.disabled=false; btn.textContent="▶ Start Conference Now"; }}
+  if (s.running) {{ btn.disabled=true; btn.innerHTML='<span class="live-dot"></span>Conference in Progress'; }}
+  else           {{ btn.disabled=false; btn.innerHTML="▶ &nbsp;Start Conference Now"; }}
   if (!s.run_time) {{
-    el.innerHTML = "<p class='muted'>No conference has run yet since the server started.</p>";
+    el.innerHTML='<p style="color:var(--text3);font-size:.85rem">No conference has run yet since the server started.</p>';
     return;
   }}
-  const badge = s.running ? "<span class='live'>● Live</span>" : "";
-  const allCalls = [...(s.calls||[]), ...(s.inbound_calls||[])];
-  const connected = (s.calls||[]).filter(c=>c.status==="connected").length;
-  const rows = (s.calls||[]).map(c => {{
-    const [icon,color] = STATUS_ICONS[c.status]||["❓","#94a3b8"];
-    const name = c.name ? `<span class="cname">${{c.name}}</span>` : "";
-    const err  = c.error ? `<span class="err-text">(${{c.error}})</span>` : "";
-    return `<li><span class="icon">${{icon}}</span><span class="num">${{c.number}}</span>${{name}}<span class="stat" style="color:${{color}}">${{c.status}}</span><span class="call-type dialed-out">Dialed out</span>${{err}}</li>`;
-  }}).join("") + (s.inbound_calls||[]).map(c => {{
-    const src = c.source||"inbound-live";
-    const name = c.name ? `<span class="cname">${{c.name}}</span>` : "";
-    const t    = c.time  ? `<span class="cname">${{c.time}}</span>` : "";
-    const [icon,color,label,cls] = src==="inbound-replay"
-      ? ["🎧","#a78bfa","Called in — heard replay","inbound-replay"]
-      : ["📲","#38bdf8","Called in — joined live","inbound-live"];
-    return `<li><span class="icon">${{icon}}</span><span class="num">${{c.number}}</span>${{name}}${{t}}<span class="stat" style="color:${{color}}">connected</span><span class="call-type ${{cls}}">${{label}}</span></li>`;
+  const badge = s.running ? '<span style="color:var(--green);font-size:.75rem;font-weight:700">● Live</span>' : '';
+  const allCalls = [...(s.calls||[])];
+  const connected = allCalls.filter(c=>c.status==="connected").length;
+  const rows = (s.calls||[]).map(c=>{{
+    const [icon,color]=STATUS_ICONS[c.status]||["❓","#8899bb"];
+    const name = c.name ? `<span class="call-name">${{c.name}}</span>` : '';
+    return `<div class="call-row"><span class="call-icon">${{icon}}</span><span class="call-num">${{c.number}}</span>${{name}}<span class="call-stat" style="color:${{color}}">${{c.status}}</span><span class="call-type-tag tag-dialed">Dialed</span></div>`;
+  }}).join("")+(s.inbound_calls||[]).map(c=>{{
+    const src=c.source||"inbound-live";
+    const name=c.name?`<span class="call-name">${{c.name}}</span>`:'';
+    const [icon,color,cls]=src==="inbound-replay"?["🎧","#a78bfa","tag-replay"]:["📲","#38bdf8","tag-live"];
+    return `<div class="call-row"><span class="call-icon">${{icon}}</span><span class="call-num">${{c.number}}</span>${{name}}<span class="call-stat" style="color:${{color}}">connected</span><span class="call-type-tag ${{cls}}">${{src==="inbound-replay"?"Replay":"Called in"}}</span></div>`;
   }}).join("");
-  el.innerHTML = `<div class="summary"><span class="muted">Last run: ${{s.run_time}} ${{badge}}</span><span class="counts">${{connected}}/${{(s.calls||[]).length}} connected</span></div><ul class="calls">${{rows}}</ul>`;
+  el.innerHTML=`<div class="run-meta"><span style="color:var(--text2)">${{s.run_time}} ${{badge}}</span><span class="run-counts">${{connected}}/${{(s.calls||[]).length}} connected</span></div><div class="calls-list">${{rows}}</div>`;
 }}
 
+// ── Numbers ─────────────────────────────────────────────────────────────────
 function renderNumbers(numbers) {{
-  const active = numbers.filter(r=>!r[3]);
-  const paused_list = numbers.filter(r=>r[3]);
   document.getElementById("num-count").textContent = numbers.length;
-  const ul = document.getElementById("numbers-list");
+  const el = document.getElementById("numbers-list");
   if (!numbers.length) {{
-    ul.innerHTML = "<li class='muted' style='border:none;background:none;padding:.5rem 0'>No numbers yet.</li>";
+    el.innerHTML='<p style="color:var(--text3);font-size:.83rem;padding:.25rem 0">No numbers yet. Add one above.</p>';
     return;
   }}
-
-  function renderRow([n, src, name, paused]) {{
-    const li_cls    = paused ? "num-paused" : "";
-    const pause_tag = paused ? "<span class='tag paused'>Paused</span>" : "";
-    const src_tag   = src==="sheet" ? "<span class='tag sheet'>Sheet</span>" : "";
-    const disp      = name || "<span class='muted'>No name</span>";
-    const pause_cls = paused ? "unpause-btn" : "pause-btn";
-    const pause_lbl = paused ? "Resume" : "Pause";
-    return `<li class="${{li_cls}}">
-      <div class="num-info"><span class="num">${{n}}</span>${{src_tag}}${{pause_tag}}<span class="nname">${{disp}}</span></div>
-      <div class="num-actions">
-        <input type="text" class="name-input" value="${{name}}" placeholder="Name" id="name-${{n}}"/>
-        <button class="save-btn" onclick="saveName('${{n}}')">Save</button>
-        <button class="${{pause_cls}}" onclick="togglePause('${{n}}', ${{paused}})">${{pause_lbl}}</button>
-        <button class="rm-btn" onclick="removeNumber('${{n}}')">✕</button>
+  const active = numbers.filter(r=>!r[3]);
+  const paused = numbers.filter(r=>r[3]);
+  function row([n,src,name,isPaused]) {{
+    const srcTag  = src==="sheet"?`<span class="tag tag-sheet">Sheet</span>`:'';
+    const pauseTag= isPaused?`<span class="tag tag-paused-small">Paused</span>`:'';
+    const disp    = name||'<span style="color:var(--text3);font-size:.75rem">No name</span>';
+    return `<div class="num-row${{isPaused?' is-paused':''}}" >
+      <div class="num-main">
+        <div style="display:flex;align-items:center;gap:.3rem">
+          <span class="num-phone">${{n}}</span>${{srcTag}}${{pauseTag}}
+        </div>
+        <div class="num-name-display">${{disp}}</div>
       </div>
-    </li>`;
+      <div class="num-actions">
+        <input type="text" class="name-inp" value="${{name}}" placeholder="Name" id="name-${{n}}"/>
+        <button class="btn-save" onclick="saveName('${{n}}')">Save</button>
+        <button class="${{isPaused?'btn-resume':'btn-pause'}}" onclick="togglePause('${{n}}',${{isPaused}})">${{isPaused?'Resume':'Pause'}}</button>
+        <button class="btn-remove" onclick="removeNumber('${{n}}')">✕</button>
+      </div>
+    </div>`;
   }}
-
-  let html = "";
-
-  if (active.length) {{
-    html += `<li style='list-style:none;padding:.3rem 0 .2rem;border:none;background:none'>
-      <span style='font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#4ade80'>
-        ✅ Will be called (${{active.length}})
-      </span>
-    </li>`;
-    html += active.map(renderRow).join("");
-  }}
-
-  if (paused_list.length) {{
-    html += `<li style='list-style:none;padding:.5rem 0 .2rem;border:none;background:none;margin-top:.5rem'>
-      <span style='font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#fb923c'>
-        ⏸ Paused — will NOT be called (${{paused_list.length}})
-      </span>
-    </li>`;
-    html += paused_list.map(renderRow).join("");
-  }}
-
-  ul.innerHTML = html;
+  let html='';
+  if (active.length) html+=`<div class="section-label active-label">✅ Will be called (${active.length})</div>`+active.map(row).join('');
+  if (paused.length) html+=`<div class="section-label paused-label" style="margin-top:.5rem">⏸ Paused — skipped on next call (${paused.length})</div>`+paused.map(row).join('');
+  el.innerHTML=html;
 }}
 
-// ── Spinner state: one entry per day, default 12:00 AM ───────────────────────
-const spinState = Array.from({{length:7}}, () => ({{h:12, m:0, ampm:"AM"}}));
-
-function to24(s) {{
-  // Convert 12-hr spinner state to 24-hr hour integer
-  let h = s.h % 12;
-  if (s.ampm === "PM") h += 12;
-  return h;
+// ── Schedule Spinners ────────────────────────────────────────────────────────
+const spinState = Array.from({{length:7}},()=>({{h:12,m:0,ampm:"AM"}}));
+function to24(s){{let h=s.h%12;if(s.ampm==="PM")h+=12;return h;}}
+function loadSpinState(day,h24,m){{
+  const s=spinState[day]; s.m=m;
+  if(h24===0){{s.h=12;s.ampm="AM";}}
+  else if(h24<12){{s.h=h24;s.ampm="AM";}}
+  else if(h24===12){{s.h=12;s.ampm="PM";}}
+  else{{s.h=h24-12;s.ampm="PM";}}
 }}
-
-function loadSpinState(day, hour24, minute) {{
-  const s = spinState[day];
-  s.m = minute;
-  if (hour24 === 0)       {{ s.h = 12; s.ampm = "AM"; }}
-  else if (hour24 < 12)  {{ s.h = hour24; s.ampm = "AM"; }}
-  else if (hour24 === 12) {{ s.h = 12; s.ampm = "PM"; }}
-  else                    {{ s.h = hour24 - 12; s.ampm = "PM"; }}
+function updateSpinDisplay(day){{
+  const s=spinState[day];
+  const hEl=document.getElementById(`sh-${{day}}`);
+  const mEl=document.getElementById(`sm-${{day}}`);
+  if(hEl)hEl.textContent=String(s.h).padStart(2,"0");
+  if(mEl)mEl.textContent=String(s.m).padStart(2,"0");
+  ["AM","PM"].forEach(v=>{{
+    const el=document.getElementById(`ampm-${{day}}-${{v}}`);
+    if(el)el.className="ampm-opt"+(s.ampm===v?" selected":"");
+  }});
 }}
-
-function updateSpinDisplay(day) {{
-  const s = spinState[day];
-  const hEl = document.getElementById(`sh-${{day}}`);
-  const mEl = document.getElementById(`sm-${{day}}`);
-  const aEl = document.getElementById(`ampm-${{day}}`);
-  if (hEl) hEl.textContent = String(s.h).padStart(2,"0");
-  if (mEl) mEl.textContent = String(s.m).padStart(2,"0");
-  if (aEl) {{
-    aEl.textContent = s.ampm;
-    aEl.className = "ampm-btn" + (s.ampm==="AM" ? " active" : "");
-  }}
-}}
-
-function spinH(day, delta) {{
-  const s = spinState[day];
-  s.h = (s.h - 1 + delta + 12) % 12 + 1;
-  updateSpinDisplay(day);
-}}
-
-function spinM(day, delta) {{
-  const s = spinState[day];
-  s.m = ((s.m + delta) + 60) % 60;
-  updateSpinDisplay(day);
-}}
-
-function toggleAmpm(day) {{
-  const s = spinState[day];
-  s.ampm = s.ampm === "AM" ? "PM" : "AM";
-  updateSpinDisplay(day);
-}}
-
-function spinnerHTML(day) {{
-  const s = spinState[day];
+function spinH(day,d){{const s=spinState[day];s.h=(s.h-1+d+12)%12+1;updateSpinDisplay(day);}}
+function spinM(day,d){{const s=spinState[day];s.m=((s.m+d)+60)%60;updateSpinDisplay(day);}}
+function setAmpm(day,v){{spinState[day].ampm=v;updateSpinDisplay(day);}}
+function spinnerHTML(day){{
+  const s=spinState[day];
   return `
     <div class="spinner-wrap">
       <button class="spinner-btn" onclick="spinH(${{day}},1)">▲</button>
@@ -1686,364 +1764,188 @@ function spinnerHTML(day) {{
       <div class="spinner-val" id="sm-${{day}}">${{String(s.m).padStart(2,"0")}}</div>
       <button class="spinner-btn" onclick="spinM(${{day}},-5)">▼</button>
     </div>
-    <button class="ampm-btn ${{s.ampm==='AM'?'active':''}}" id="ampm-${{day}}" onclick="toggleAmpm(${{day}})">
-      ${{s.ampm}}
-    </button>`;
+    <div class="ampm-group">
+      <button class="ampm-opt${{s.ampm==="AM"?" selected":""}}" id="ampm-${{day}}-AM" onclick="setAmpm(${{day}},'AM')">AM</button>
+      <button class="ampm-opt${{s.ampm==="PM"?" selected":""}}" id="ampm-${{day}}-PM" onclick="setAmpm(${{day}},'PM')">PM</button>
+    </div>`;
 }}
-
-function renderSchedule(schedule) {{
-  const grid = document.getElementById("day-grid");
-  const byDay = {{}};
-  schedule.forEach(e => {{ if(!(e.day in byDay)) byDay[e.day]=e; }});
-  // Pre-load spinner state from saved schedule
-  DAYS.forEach((_, i) => {{
-    if (byDay[i]) loadSpinState(i, byDay[i].hour, byDay[i].minute);
-    else {{ spinState[i].h=12; spinState[i].m=0; spinState[i].ampm="AM"; }}
+function renderSchedule(schedule){{
+  const grid=document.getElementById("day-grid");
+  const byDay={{}};
+  schedule.forEach(e=>{{if(!(e.day in byDay))byDay[e.day]=e;}});
+  DAYS.forEach((_,i)=>{{
+    if(byDay[i])loadSpinState(i,byDay[i].hour,byDay[i].minute);
+    else{{spinState[i].h=12;spinState[i].m=0;spinState[i].ampm="AM";}}
   }});
-  grid.innerHTML = DAYS.map((dayName, i) => {{
-    const isSet  = !!byDay[i];
-    const rowCls = isSet ? "day-row active" : "day-row";
-    const setLbl = isSet ? "Update" : "Set";
-    const clearBtn = isSet
-      ? `<button class="day-clear" onclick="clearDay(${{i}},'${{dayName}}')">✕</button>`
-      : "";
+  grid.innerHTML=DAYS.map((dayName,i)=>{{
+    const isSet=!!byDay[i];
+    const rowCls=isSet?"day-row active":"day-row";
+    const setLbl=isSet?"Update":"Set";
+    const clearBtn=isSet?`<button class="btn-clear-day" onclick="clearDay(${{i}},'${{dayName}}')">✕</button>`:"";
     return `<div class="${{rowCls}}" id="day-row-${{i}}">
       <span class="day-name">${{dayName}}</span>
       <div class="day-form">
         ${{spinnerHTML(i)}}
-        <button class="set-btn" onclick="setDay(${{i}})">${{setLbl}}</button>
+        <button class="btn-set" onclick="setDay(${{i}})">${{setLbl}}</button>
         ${{clearBtn}}
       </div>
     </div>`;
   }}).join("");
 }}
 
-function renderReading(s) {{
-  const el = document.getElementById("reading-section");
-  const on = s.reading_enabled;
-  const hint = on
-    ? "Participants vote by pressing 1. If all vote yes, the reading plays automatically."
-    : "Auto-read is disabled.";
-  let body = `<div class="toggle-row">
-    <button class="toggle-btn ${{on?'toggle-on':'toggle-off'}}" onclick="toggleReading()">${{on?"Auto-Read: On":"Auto-Read: Off"}}</button>
-    <span class="muted" style="font-size:.8rem">${{hint}}</span>
-  </div>`;
-  if (!s.book_total) {{
-    body += "<p class='muted' style='margin-top:.75rem'>No book uploaded. Upload a .txt file to enable daily readings.</p>";
-    document.getElementById("book-upload-summary").textContent = "Upload a book (.txt)";
-  }} else {{
-    let vbadge = "";
-    if (on && s.expected > 0) {{
-      vbadge = s.triggered
-        ? "<span class='vote-done'>📖 Reading played this session</span>"
-        : `<span class='vote-count'>📖 ${{s.voted}}/${{s.expected}} voted for reading</span>`;
-    }}
-    body += `<div class="book-info" style="margin-top:.75rem">
-      <span class="book-title">${{s.book_title||"Untitled"}}</span>
-      <span class="muted">Portion ${{s.book_index+1}} of ${{s.book_total}}</span>
-    </div>
-    ${{vbadge ? `<div style="margin-bottom:.5rem">${{vbadge}}</div>` : ""}}
-    <div class="book-btns">
-      <button class="sec-btn" onclick="bookAdvance()">Skip to Next Portion</button>
-      <button class="rm-btn" onclick="bookRemove()">Remove Book</button>
-    </div>`;
-    document.getElementById("book-upload-summary").textContent = "Replace book";
+// ── Reading ──────────────────────────────────────────────────────────────────
+function renderReading(s){{
+  const el=document.getElementById("reading-section");
+  const on=s.reading_enabled;
+  const hint=on?"Participants press 1 to vote. Plays if all vote yes.":"Enable to read a daily portion aloud on the call.";
+  let body=`<div class="toggle-row"><button class="toggle-btn ${{on?'toggle-on':'toggle-off'}}" onclick="toggleReading()">${{on?"Auto-Read: On":"Auto-Read: Off"}}</button><span class="toggle-hint">${{hint}}</span></div>`;
+  if(!s.book_total){{
+    body+='<p style="color:var(--text3);font-size:.8rem;margin-top:.6rem">No book uploaded yet.</p>';
+    document.getElementById("book-upload-summary").textContent="Upload a book (.txt)";
+  }}else{{
+    let vbadge="";
+    if(on&&s.expected>0)vbadge=s.triggered?'<span style="color:var(--green);font-size:.78rem">📖 Reading played this session</span>':`<span style="color:var(--purple);font-size:.78rem">📖 ${{s.voted}}/${{s.expected}} voted</span>`;
+    body+=`<div class="book-info-row" style="margin-top:.65rem"><span style="font-weight:700">${{s.book_title||"Untitled"}}</span><span style="color:var(--text2);font-size:.78rem">Portion ${{s.book_index+1}} of ${{s.book_total}}</span></div>
+    ${{vbadge?`<div style="margin:.3rem 0">${{vbadge}}</div>`:""}}
+    <div class="book-actions"><button class="btn-sec" onclick="bookAdvance()">Skip to Next</button><button class="btn-remove" style="padding:.45rem .9rem;border-radius:8px;font-size:.82rem" onclick="bookRemove()">Remove Book</button></div>`;
+    document.getElementById("book-upload-summary").textContent="Replace book";
   }}
-  el.innerHTML = body;
+  el.innerHTML=body;
 }}
 
-function renderRecording(s) {{
-  const el = document.getElementById("recording-section");
-  const rec_on = s.record_enabled, replay_on = s.replay_enabled;
-  const rec_hint    = rec_on ? "The next scheduled conference will be recorded automatically." : "Enable to automatically record each scheduled conference call.";
-  const replay_hint = replay_on ? "Anyone who calls in after the conference will hear the last recording." : "Enable so callers who missed the conference hear the playback.";
-  let info="", dl="";
-  if (s.rec_exists && s.rec_meta && s.rec_meta.date) {{
-    const kb = (s.rec_meta.size_bytes||0)>>10;
-    info = `<p class='muted' style='font-size:.82rem;margin:.4rem 0'>Recorded: ${{s.rec_meta.date}} &nbsp;·&nbsp; ${{kb}} KB</p>`;
-    dl   = `<a href='/recordings/audio' class='sec-btn' style='display:inline-block;text-decoration:none;margin-top:.4rem' download='conference.mp3'>⬇ Download</a>`;
-  }} else {{
-    info = "<p class='muted' style='font-size:.82rem;margin:.4rem 0'>No recording saved yet.</p>";
+// ── Recording ────────────────────────────────────────────────────────────────
+function renderRecording(s){{
+  const el=document.getElementById("recording-section");
+  const recOn=s.record_enabled,repOn=s.replay_enabled;
+  let info="",dl="";
+  if(s.rec_exists&&s.rec_meta&&s.rec_meta.date){{
+    const kb=(s.rec_meta.size_bytes||0)>>10;
+    info=`<div class="rec-meta">Recorded: ${{s.rec_meta.date}} · ${{kb}} KB</div>`;
+    dl=`<a href="/recordings/audio" class="btn-dl" download="conference.mp3">⬇ Download Recording</a>`;
+  }}else{{
+    info='<div class="rec-meta" style="color:var(--text3)">No recording saved yet.</div>';
   }}
-  el.innerHTML = `
-    <div class="toggle-row">
-      <button class="toggle-btn ${{rec_on?'toggle-on':'toggle-off'}}" onclick="toggleRecording()">${{rec_on?"Record Conference: On":"Record Conference: Off"}}</button>
-      <span class="muted" style="font-size:.8rem">${{rec_hint}}</span>
-    </div>
-    <div class="toggle-row" style="margin-top:.6rem">
-      <button class="toggle-btn ${{replay_on?'toggle-on':'toggle-off'}}" onclick="toggleReplay()">${{replay_on?"Replay for Late Callers: On":"Replay for Late Callers: Off"}}</button>
-      <span class="muted" style="font-size:.8rem">${{replay_hint}}</span>
-    </div>
+  el.innerHTML=`
+    <div class="toggle-row"><button class="toggle-btn ${{recOn?'toggle-on':'toggle-off'}}" onclick="toggleRecording()">${{recOn?"Record: On":"Record: Off"}}</button><span class="toggle-hint">${{recOn?"Next conference will be recorded.":"Enable to record conferences."}}</span></div>
+    <div class="toggle-row"><button class="toggle-btn ${{repOn?'toggle-on':'toggle-off'}}" onclick="toggleReplay()">${{repOn?"Replay for Late Callers: On":"Replay for Late Callers: Off"}}</button><span class="toggle-hint">${{repOn?"Late callers hear the last recording.":"Late callers join a silent conference."}}</span></div>
     ${{info}}${{dl}}`;
 }}
 
-function renderAnnouncements(s) {{
-  const el  = document.getElementById("announcements-section");
-  const on  = s.announcements_enabled;
-  const hint = on ? "Everyone on the call hears '[Name] has joined' when someone connects." : "Enable to announce each participant's name when they join.";
-  el.innerHTML = `<div class="toggle-row">
-    <button class="toggle-btn ${{on?'toggle-on':'toggle-off'}}" onclick="toggleAnnouncements()">${{on?"Join Announcements: On":"Join Announcements: Off"}}</button>
-    <span class="muted" style="font-size:.8rem">${{hint}}</span>
-  </div>`;
+// ── Announcements ────────────────────────────────────────────────────────────
+function renderAnnouncements(s){{
+  const el=document.getElementById("announcements-section");
+  const on=s.announcements_enabled;
+  el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{on?'toggle-on':'toggle-off'}}" onclick="toggleAnnouncements()">${{on?"Join Announcements: On":"Join Announcements: Off"}}</button><span class="toggle-hint">${{on?"Everyone hears '[Name] has joined' when someone connects.":"Enable to announce participants when they join."}}</span></div>`;
 }}
 
-function renderSheets(s) {{
-  const el = document.getElementById("sheets-section");
-  const sid = s.spreadsheet_id || "";
-  const msg = s.sheets_msg || "";
-  const msgHtml = msg ? `<p style='color:${{s.sheets_ok?"#86efac":"#f87171"}};font-size:.82rem;margin:.5rem 0 0'>${{msg}}</p>` : "";
-  el.innerHTML = `<button class="save-btn" style="background:#14532d;color:#86efac;padding:.4rem .9rem" ${{sid?"":"disabled"}} onclick="sheetsSync()">↺ Re-sync from Sheet</button>${{msgHtml}}`;
+// ── Sheets ───────────────────────────────────────────────────────────────────
+function renderSheets(s){{
+  const el=document.getElementById("sheets-section");
+  const msg=s.sheets_msg||"";
+  const msgHtml=msg?`<span class="${{s.sheets_ok?'sheets-msg-ok':'sheets-msg-err'}}">${{msg}}</span>`:"";
+  el.innerHTML=`<div class="sheets-row"><button class="btn-sync" onclick="sheetsSync()">↺ Re-sync from Sheet</button>${{msgHtml}}</div>`;
 }}
 
-async function renderHangup() {{
-  const sec = document.getElementById("hangup-section");
-  const ctl = document.getElementById("hangup-controls");
-  const r   = await fetch("/api/live-calls", {{credentials:"include"}}).then(x=>x.json()).catch(()=>({{calls:[]}}));
-  const calls = r.calls || [];
-  if (!calls.length) {{
-    sec.style.display = "none";
-    return;
-  }}
-  sec.style.display = "block";
-  const connected = calls.filter(c=>c.status==="connected").length;
-  const ringing   = calls.filter(c=>c.status==="dialing").length;
-  let html = `
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
-      <button class="hangup-all-btn" style="flex:1;margin:0" onclick="hangupAllAction(false)">
-        🔴 Hang Up Everyone (${{calls.length}} active)
-      </button>
-      <button class="hangup-all-btn" style="flex:1;margin:0;background:#7c2d12" onclick="hangupAllAction(true)">
-        🚫 Hang Up + Block All from Calling Back
-      </button>
-    </div>
-    <div style="font-size:.75rem;color:#64748b;margin-bottom:.4rem">
-      ${{connected}} connected · ${{ringing}} still ringing
-    </div>`;
-  html += calls.map(c => {{
-    const statusColor = c.status==="connected" ? "#4ade80" : "#facc15";
-    const statusLabel = c.status==="connected" ? "Connected" : "Ringing";
-    const blockedTag  = c.blocked ? "<span style='color:#fb923c;font-size:.72rem'> · Blocked</span>" : "";
-    return `<div class="live-call-row">
-      <div>
-        <span style="font-family:monospace">${{c.number}}</span>
-        ${{c.name ? `<span style="color:#94a3b8;font-size:.8rem"> — ${{c.name}}</span>` : ""}}
-        <span style="color:${{statusColor}};font-size:.72rem;margin-left:.35rem">● ${{statusLabel}}</span>
-        ${{blockedTag}}
+// ── Hangup ───────────────────────────────────────────────────────────────────
+async function renderHangup(){{
+  const sec=document.getElementById("hangup-section");
+  const ctl=document.getElementById("hangup-controls");
+  const r=await fetch("/api/live-calls",{{credentials:"include"}}).then(x=>x.json()).catch(()=>({{calls:[]}}));
+  const calls=r.calls||[];
+  if(!calls.length){{sec.style.display="none";return;}}
+  sec.style.display="block";
+  const connected=calls.filter(c=>c.status==="connected").length;
+  const ringing=calls.filter(c=>c.status==="dialing").length;
+  let html=`<div class="hangup-all-row">
+    <button class="btn-hangup-all" onclick="hangupAllAction(false)">🔴 Hang Up Everyone (${{calls.length}})</button>
+    <button class="btn-hangup-block" onclick="hangupAllAction(true)">🚫 Hang Up + Block All</button>
+  </div>
+  <p style="font-size:.73rem;color:var(--text3);margin-bottom:.5rem">${{connected}} connected · ${{ringing}} ringing</p>`;
+  html+=calls.map(c=>{{
+    const color=c.status==="connected"?"var(--green)":"var(--yellow)";
+    const label=c.status==="connected"?"Connected":"Ringing";
+    const blocked=c.blocked?'<span style="color:var(--orange);font-size:.72rem"> · Blocked</span>':'';
+    return `<div class="live-row">
+      <div class="live-info">
+        <span style="font-family:'Inter',monospace;font-weight:600">${{c.number}}</span>
+        ${{c.name?`<span style="color:var(--text2);font-size:.78rem"> — ${{c.name}}</span>`:''}}
+        <span style="color:${{color}};font-size:.72rem;margin-left:.3rem">● ${{label}}</span>${{blocked}}
       </div>
-      <div class="hangup-opts">
-        <button class="hup-btn" onclick="hangupOneAction('${{c.uuid}}', false)">Hang Up</button>
-        <button class="hup-block-btn" onclick="hangupOneAction('${{c.uuid}}', true)">Hang Up + Block</button>
+      <div class="live-actions">
+        <button class="btn-hup" onclick="hangupOneAction('${{c.uuid}}',false)">Hang Up</button>
+        <button class="btn-hup-block" onclick="hangupOneAction('${{c.uuid}}',true)">+ Block</button>
       </div>
     </div>`;
   }}).join("");
-  ctl.innerHTML = html;
+  ctl.innerHTML=html;
 }}
 
-async function hangupAllAction(block) {{
-  const msg = block
-    ? `Hang up all ${{(await fetch("/api/live-calls",{{credentials:"include"}}).then(r=>r.json())).calls.length}} active calls and block them from calling back this session?`
-    : `Hang up all active calls?`;
-  if (!confirm(msg)) return;
-  const r = await post("/hangup/all", {{block}});
-  if (r.ok) {{
-    toast(block ? `Hung up ${{r.hung_up.length}} and blocked from calling back` : `Hung up ${{r.hung_up.length}} call(s)`);
-    setTimeout(renderHangup, 1500);
-  }} else {{ toast("Hangup failed"); }}
+async function hangupAllAction(block){{
+  if(!confirm(block?"Hang up all and block from calling back?":"Hang up all active calls?"))return;
+  const r=await post("/hangup/all",{{block}});
+  if(r.ok){{toast(block?`Hung up ${{r.hung_up.length}} and blocked`:`Hung up ${{r.hung_up.length}} call(s)`);setTimeout(renderHangup,1500);}}
+  else toast("Hangup failed");
 }}
 
-async function hangupOneAction(uuid, block) {{
-  const msg = block ? "Hang up and block from calling back this session?" : "Hang up this person?";
-  if (!confirm(msg)) return;
-  const r = await post("/hangup/one", {{uuid, block}});
-  if (r.ok) {{
-    toast(block ? "Hung up and blocked from calling back" : "Hung up");
-    setTimeout(renderHangup, 1500);
-  }} else {{ toast("Hangup failed: " + (r.error||"")); }}
+async function hangupOneAction(uuid,block){{
+  if(!confirm(block?"Hang up and block from calling back this session?":"Hang up this person?"))return;
+  const r=await post("/hangup/one",{{uuid,block}});
+  if(r.ok){{toast(block?"Hung up and blocked":"Hung up");setTimeout(renderHangup,1500);}}
+  else toast("Failed: "+(r.error||""));
 }}
 
-async function refresh() {{
-  try {{
-    const s = await fetch("/api/state", {{credentials: "include"}}).then(r=>r.json());
-    renderLastRun(s);
-    renderNumbers(s.numbers);
-    renderSchedule(s.schedule);
-    renderReading(s);
-    renderRecording(s);
-    renderAnnouncements(s);
-    renderSheets(s);
+// ── Actions ───────────────────────────────────────────────────────────────────
+async function triggerConference(){{
+  const btn=document.getElementById("trigger-btn");
+  btn.disabled=true; btn.innerHTML='<span class="live-dot"></span>Starting…';
+  const r=await post("/trigger");
+  if(!r.ok){{toast("Already running");btn.disabled=false;btn.innerHTML="▶ &nbsp;Start Conference Now";}}
+  else{{toast("Conference started!");setTimeout(refresh,2000);}}
+}}
+async function addNumber(){{
+  const num=document.getElementById("new-number").value.trim();
+  const name=document.getElementById("new-name").value.trim();
+  if(!num)return;
+  const r=await post("/numbers/add",{{number:num,name}});
+  if(r.ok){{document.getElementById("new-number").value="";document.getElementById("new-name").value="";renderNumbers(r.numbers);toast("Number added");}}
+  else toast("Invalid number");
+}}
+async function removeNumber(n){{if(!confirm(`Remove ${{n}}?`))return;const r=await post("/numbers/remove",{{number:n}});if(r.ok){{renderNumbers(r.numbers);toast("Removed");}}}}
+async function togglePause(n,paused){{const r=await post(paused?"/numbers/unpause":"/numbers/pause",{{number:n}});if(r.ok){{renderNumbers(r.numbers);toast(paused?"Resumed":"Paused");}}}}
+async function saveName(n){{const name=document.getElementById(`name-${{n}}`).value.trim();const r=await post("/numbers/setname",{{number:n,name}});if(r.ok){{renderNumbers(r.numbers);toast("Name saved");}}}}
+async function setDay(day){{const s=spinState[day];const h24=to24(s);const t=`${{String(h24).padStart(2,"0")}}:${{String(s.m).padStart(2,"0")}}`;const r=await post("/schedule/set-day",{{day,time:t}});if(r.ok){{renderSchedule(r.schedule);toast("Schedule set!");}}}}
+async function clearDay(day,name){{if(!confirm(`Remove ${{name}}?`))return;const r=await post("/schedule/clear-day",{{day}});if(r.ok){{renderSchedule(r.schedule);toast("Removed");}}}}
+async function toggleReading(){{await post("/reading/toggle");refresh();}}
+async function bookAdvance(){{await post("/book/advance");refresh();}}
+async function bookRemove(){{if(!confirm("Remove this book?"))return;await post("/book/remove");refresh();toast("Book removed");}}
+async function uploadBook(){{const form=document.getElementById("book-upload-form");const r=await post("/book/upload",new FormData(form),true);if(r.ok){{refresh();toast(`Uploaded — ${{r.count}} portions`);document.getElementById("book-upload-details").open=false;}}else toast("Upload failed");}}
+async function toggleRecording(){{await post("/recording/toggle");refresh();}}
+async function toggleReplay(){{await post("/replay/toggle");refresh();}}
+async function toggleAnnouncements(){{await post("/announcements/toggle");refresh();}}
+async function sheetsSync(){{toast("Syncing…",3000);await fetch("/sheets/sync",{{method:"POST"}});const s=await fetch("/api/state",{{credentials:"include"}}).then(r=>r.json());renderNumbers(s.numbers);renderSheets(s);toast("Synced!");}}
+
+// ── Refresh ───────────────────────────────────────────────────────────────────
+async function refresh(){{
+  try{{
+    const s=await fetch("/api/state",{{credentials:"include"}}).then(r=>r.json());
+    renderLastRun(s);renderNumbers(s.numbers);renderSchedule(s.schedule);
+    renderReading(s);renderRecording(s);renderAnnouncements(s);renderSheets(s);
     renderHangup();
-  }} catch(e) {{ console.error("Refresh error", e); }}
+  }}catch(e){{console.error("Refresh error",e);}}
 }}
 
-// ── Actions ─────────────────────────────────────────────────────────────────
-
-async function triggerConference() {{
-  const btn = document.getElementById("trigger-btn");
-  btn.disabled=true; btn.textContent="● Starting…";
-  const r = await post("/trigger");
-  if (!r.ok) {{ toast("Already running"); btn.disabled=false; btn.textContent="▶ Start Conference Now"; }}
-  else {{ toast("Conference started!"); setTimeout(refresh, 2000); }}
-}}
-
-async function addNumber() {{
-  const num  = document.getElementById("new-number").value.trim();
-  const name = document.getElementById("new-name").value.trim();
-  if (!num) return;
-  const r = await post("/numbers/add", {{number:num, name}});
-  if (r.ok) {{
-    document.getElementById("new-number").value = "";
-    document.getElementById("new-name").value   = "";
-    renderNumbers(r.numbers); toast("Number added");
-  }} else {{ toast("Invalid number"); }}
-}}
-
-async function removeNumber(n) {{
-  if (!confirm(`Remove ${{n}}?`)) return;
-  const r = await post("/numbers/remove", {{number:n}});
-  if (r.ok) {{ renderNumbers(r.numbers); toast("Removed"); }}
-}}
-
-async function togglePause(n, paused) {{
-  const r = await post(paused?"/numbers/unpause":"/numbers/pause", {{number:n}});
-  if (r.ok) {{ renderNumbers(r.numbers); toast(paused?"Resumed":"Paused"); }}
-}}
-
-async function saveName(n) {{
-  const name = document.getElementById(`name-${{n}}`).value.trim();
-  const r = await post("/numbers/setname", {{number:n, name}});
-  if (r.ok) {{ renderNumbers(r.numbers); toast("Name saved"); }}
-}}
-
-async function setDay(day) {{
-  const s = spinState[day];
-  const hour24 = to24(s);
-  const timeStr = `${{String(hour24).padStart(2,"0")}}:${{String(s.m).padStart(2,"0")}}`;
-  const r = await post("/schedule/set-day", {{day, time:timeStr}});
-  if (r.ok) {{ renderSchedule(r.schedule); toast("Schedule set!"); }}
-}}
-
-async function clearDay(day, name) {{
-  if (!confirm(`Remove ${{name}}?`)) return;
-  const r = await post("/schedule/clear-day", {{day}});
-  if (r.ok) {{ renderSchedule(r.schedule); toast("Removed"); }}
-}}
-
-async function toggleReading()       {{ await post("/reading/toggle");       refresh(); }}
-async function bookAdvance()         {{ await post("/book/advance");          refresh(); }}
-async function bookRemove()          {{ if(!confirm("Remove this book?")) return; await post("/book/remove"); refresh(); toast("Book removed"); }}
-async function toggleRecording()     {{ await post("/recording/toggle");      refresh(); }}
-async function toggleReplay()        {{ await post("/replay/toggle");         refresh(); }}
-async function toggleAnnouncements() {{ await post("/announcements/toggle");  refresh(); }}
-
-async function uploadBook() {{
-  const form = document.getElementById("book-upload-form");
-  const r = await post("/book/upload", new FormData(form), true);
-  if (r.ok) {{ refresh(); toast(`Book uploaded — ${{r.count}} portions`); document.getElementById("book-upload-details").open=false; }}
-  else {{ toast("Upload failed"); }}
-}}
-
-async function sheetsSync() {{
-  toast("Syncing...", 3000);
-  const r = await fetch("/sheets/sync", {{method:"POST"}}).then(()=>fetch("/api/state").then(x=>x.json()));
-  renderNumbers(r.numbers);
-  renderSheets(r);
-}}
-
-// ── Init ────────────────────────────────────────────────────────────────────
 refresh();
-setInterval(async () => {{
-  const btn = document.getElementById("trigger-btn");
-  if (btn && btn.disabled) refresh();
-}}, 10000);
+setInterval(()=>{{const b=document.getElementById("trigger-btn");if(b&&b.disabled)refresh();}},8000);
 
-// PWA install
+// PWA
 let deferredPrompt;
-const banner     = document.getElementById("install-banner");
-const installBtn = document.getElementById("install-btn");
-const dismissBtn = document.getElementById("dismiss-btn");
-window.addEventListener("beforeinstallprompt", e => {{
-  e.preventDefault(); deferredPrompt = e;
-  if (!sessionStorage.getItem("install-dismissed")) banner.style.display="flex";
-}});
-installBtn.addEventListener("click", async () => {{
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  await deferredPrompt.userChoice;
-  deferredPrompt=null; banner.style.display="none";
-}});
-dismissBtn.addEventListener("click", () => {{
-  banner.style.display="none";
-  sessionStorage.setItem("install-dismissed","1");
-}});
-window.addEventListener("appinstalled", () => {{ banner.style.display="none"; }});
-
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{{}});
+const banner=document.getElementById("install-banner");
+window.addEventListener("beforeinstallprompt",e=>{{e.preventDefault();deferredPrompt=e;if(!sessionStorage.getItem("install-dismissed"))banner.style.display="flex";}});
+document.getElementById("install-btn").addEventListener("click",async()=>{{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;banner.style.display="none";}});
+document.getElementById("dismiss-btn").addEventListener("click",()=>{{banner.style.display="none";sessionStorage.setItem("install-dismissed","1");}});
+if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{{}});
 </script>
 </body></html>"""
-
-
-# ── Manual hangup ─────────────────────────────────────────────────────────────
-
-def _terminate_call(uuid):
-    """Terminate a Vonage call by UUID. Works for ringing and connected calls."""
-    try:
-        client.voice.hangup(uuid)
-        return True
-    except Exception as e:
-        print(f"terminate_call error {uuid}: {e}")
-        return False
-
-@app.route("/hangup/all", methods=["POST"])
-@login_required
-def hangup_all():
-    """Hang up ALL active call legs (ringing + connected). Optionally block from calling back."""
-    data  = request.json or {}
-    block = data.get("block", False)
-    with log_lock:
-        targets = [(u, e.copy()) for u, e in call_status_map.items()
-                   if e.get("status") in ("dialing","connected")]
-    hung_up = []
-    for uuid, entry in targets:
-        if _terminate_call(uuid):
-            hung_up.append(entry.get("number", uuid))
-            if block and entry.get("number"):
-                session_blocked.add(entry["number"])
-    return jsonify({"ok": True, "hung_up": hung_up, "blocked": block})
-
-@app.route("/hangup/one", methods=["POST"])
-@login_required
-def hangup_one():
-    """Hang up one participant by UUID. Optionally block from calling back this session."""
-    data  = request.json or {}
-    uuid  = data.get("uuid", "")
-    block = data.get("block", False)
-    if not uuid:
-        return jsonify({"ok": False, "error": "No UUID"}), 400
-    with log_lock:
-        entry = call_status_map.get(uuid, {})
-    number = entry.get("number", "")
-    ok = _terminate_call(uuid)
-    if ok and block and number:
-        session_blocked.add(number)
-    return jsonify({"ok": ok, "number": number, "blocked": block})
-
-@app.route("/api/live-calls")
-@login_required
-def live_calls():
-    """Return all active call legs: ringing and connected."""
-    with log_lock:
-        calls = [
-            {
-                "uuid":   u,
-                "number": e.get("number",""),
-                "name":   e.get("name",""),
-                "status": e.get("status",""),
-                "blocked": e.get("number","") in session_blocked,
-            }
-            for u, e in call_status_map.items()
-            if e.get("status") in ("dialing","connected")
-        ]
-    return jsonify({"calls": calls})
 
 # ── Schedule routes ───────────────────────────────────────────────────────────
 
