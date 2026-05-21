@@ -1909,7 +1909,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 def _terminate_call(uuid):
     """Terminate a Vonage call by UUID. Works for ringing and connected calls."""
     try:
-        client.voice.terminate_call(uuid)
+        client.voice.hangup(uuid)
         return True
     except Exception as e:
         print(f"terminate_call error {uuid}: {e}")
