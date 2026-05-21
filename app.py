@@ -1541,7 +1541,7 @@ function renderSheets(s) {{
 
 async function refresh() {{
   try {{
-    const s = await fetch("/api/state").then(r=>r.json());
+    const s = await fetch("/api/state", {credentials: "include"}).then(r=>r.json());
     renderLastRun(s);
     renderNumbers(s.numbers);
     renderSchedule(s.schedule);
