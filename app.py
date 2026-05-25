@@ -814,7 +814,10 @@ def _is_approved_member(number):
         return False
     with numbers_lock:
         added, removed, paused = _load_local()
-    return number in added
+    result = number in added
+    if not result:
+        print(f"[member check] {number} NOT found in approved list. List has {len(added)} numbers: {list(added)[:5]}...")
+    return result
 
 @app.route("/answer", methods=["GET","POST"])
 def answer():
@@ -1550,10 +1553,10 @@ def status():
       <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶ &nbsp;Start Conference Now</button>
     </div>
 
-    <!-- HANGUP (hidden until active) -->
-    <div class='card' id='hangup-section' style='display:none'>
+    <!-- HANGUP (always visible) -->
+    <div class='card' id='hangup-section'>
       <div class='card-header'><span class='card-title'>🔴 &nbsp;Active Call Controls</span></div>
-      <div id='hangup-controls'></div>
+      <div id='hangup-controls'><p style='color:var(--text3);font-size:.83rem'>No active calls right now.</p></div>
     </div>
 
     <!-- DIAL-IN -->
@@ -1760,9 +1763,9 @@ function spinnerHTML(day){{
     </div>
     <span class="sep">:</span>
     <div class="spinner-wrap">
-      <button class="spinner-btn" onclick="spinM(${{day}},5)">▲</button>
+      <button class="spinner-btn" onclick="spinM(${{day}},1)">▲</button>
       <div class="spinner-val" id="sm-${{day}}">${{String(s.m).padStart(2,"0")}}</div>
-      <button class="spinner-btn" onclick="spinM(${{day}},-5)">▼</button>
+      <button class="spinner-btn" onclick="spinM(${{day}},-1)">▼</button>
     </div>
     <div class="ampm-group">
       <button class="ampm-opt${{s.ampm==="AM"?" selected":""}}" id="ampm-${{day}}-AM" onclick="setAmpm(${{day}},'AM')">AM</button>
@@ -1852,8 +1855,10 @@ async function renderHangup(){{
   const ctl=document.getElementById("hangup-controls");
   const r=await fetch("/api/live-calls",{{credentials:"include"}}).then(x=>x.json()).catch(()=>({{calls:[]}}));
   const calls=r.calls||[];
-  if(!calls.length){{sec.style.display="none";return;}}
-  sec.style.display="block";
+  if(!calls.length){{
+    ctl.innerHTML='<p style="color:var(--text3);font-size:.83rem">No active calls right now.</p>';
+    return;
+  }}
   const connected=calls.filter(c=>c.status==="connected").length;
   const ringing=calls.filter(c=>c.status==="dialing").length;
   let html=`<div class="hangup-all-row">
@@ -2003,6 +2008,7 @@ def schedule_remove():
 def run_scheduler():
     fired_today: set = set()   # set of (day, hour, minute) fired this calendar day
     last_date = None
+    last_minute = None
     while True:
         now   = datetime.now(EASTERN)
         today = now.date()
@@ -2010,13 +2016,16 @@ def run_scheduler():
             fired_today = set()
             last_date   = today
         key = (now.weekday(), now.hour, now.minute)
-        for entry in load_schedule():
-            ekey = (entry["day"], entry["hour"], entry["minute"])
-            if key == ekey and ekey not in fired_today:
-                fired_today.add(ekey)
-                threading.Thread(target=start_conference, daemon=True).start()
-                break
-        time.sleep(30)
+        # Only check once per minute — skip if we already checked this minute
+        if key != last_minute:
+            last_minute = key
+            for entry in load_schedule():
+                ekey = (entry["day"], entry["hour"], entry["minute"])
+                if key == ekey and ekey not in fired_today:
+                    fired_today.add(ekey)
+                    threading.Thread(target=start_conference, daemon=True).start()
+                    break
+        time.sleep(15)
 
 def _startup_sync():
     time.sleep(5)          # let Flask fully start first
