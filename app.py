@@ -464,6 +464,8 @@ def answer():
 @app.route("/join-press", methods=["GET","POST"])
 def join_press():
     data  = request.get_json(silent=True) or {}
+    if not data:
+        data = request.values.to_dict()
     digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
     if str(digit).strip() == "1":
         uuid     = data.get("uuid","")
@@ -485,9 +487,14 @@ def join_press():
 
 @app.route("/event", methods=["GET","POST"])
 def event():
+    # Vonage sends events as GET params OR POST JSON — handle both
     data   = request.get_json(silent=True) or {}
+    if not data:
+        data = request.values.to_dict()
     uuid   = data.get("uuid","")
     status = data.get("status","")
+    if uuid or status:
+        print(f"[event] uuid={uuid} status={status}", flush=True)
     with lock:
         if uuid in call_map:
             entry   = call_map[uuid]
