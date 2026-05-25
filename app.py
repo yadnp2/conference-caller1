@@ -421,19 +421,31 @@ def answer():
     data = request.get_json(silent=True) or {}
     if not data:
         data = request.values.to_dict()
-    uuid = data.get("uuid", "")
-    print(f"[answer] uuid={uuid} to={data.get('to','')} from={data.get('from','')}", flush=True)
+    uuid     = data.get("uuid", "")
+    to_num   = data.get("to", "")
+    from_num = data.get("from", "")
+    print(f"[answer] uuid={uuid} to={to_num} from={from_num}", flush=True)
+
+    # Determine if outbound or inbound:
+    # Outbound: Vonage is calling a member (to=member number, from=our Vonage number)
+    # Inbound:  A member is calling us (to=our Vonage number, from=member number)
+    clean_to   = _clean(to_num)   if to_num   else None
+    clean_from = _clean(from_num) if from_num else None
+    vonage_num = _clean(FROM_NUMBER)
 
     with lock:
-        is_outbound = uuid in call_map
+        in_call_map = uuid in call_map
+
+    # It's outbound if: uuid is in call_map OR the 'to' number is a member (not our Vonage number)
+    is_outbound = in_call_map or (clean_to and clean_to != vonage_num and is_approved_member(clean_to))
 
     if is_outbound:
         # Outbound call answered — just join the conference
         return jsonify([{"action": "talk", "text": "Please hold, joining the conference."}, *_conference_ncco()])
 
     # Inbound call — check if member is approved
-    from_raw = data.get("from", "")
-    number   = _clean(from_raw)
+    from_raw = from_num  # already extracted above
+    number   = clean_from
 
     if not number:
         return jsonify([{"action": "talk", "text": "Sorry, calls with a hidden number cannot join. Goodbye."}])
