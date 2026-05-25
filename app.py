@@ -201,26 +201,48 @@ def sync_from_sheets():
         return False, "Missing GOOGLE_SERVICE_ACCOUNT_JSON or SPREADSHEET_ID"
     try:
         info  = json.loads(raw)
-        creds = _SACredentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
+        creds = _SACredentials.from_service_account_info(
+            info, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
         gc    = gspread.authorize(creds)
         ws    = gc.open_by_key(sid).sheet1
         rows  = ws.get("A2:B") or []
     except Exception as e:
         return False, f"Sheet error: {e}"
-    imported = 0
+
+    # Build set of numbers from sheet
+    sheet_numbers = {}
     for row in rows:
-        name   = (row[0] if row else "").strip()
-        raw_n  = (row[1] if len(row) > 1 else "").strip()
-        clean  = _clean(raw_n)
-        if not clean:
-            continue
-        add_member(clean, name, source="sheet")
-        imported += 1
-    return True, f"Synced {imported} number(s) from Google Sheet"
+        name  = (row[0] if row else "").strip()
+        raw_n = (row[1] if len(row) > 1 else "").strip()
+        clean = _clean(raw_n)
+        if clean:
+            sheet_numbers[clean] = name
 
-# ── SCHEDULE ──────────────────────────────────────────────────────────────────
+    if not sheet_numbers:
+        return False, "Sheet appears empty — sync cancelled to avoid deleting all members"
 
-DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Upsert everyone in the sheet
+            for number, name in sheet_numbers.items():
+                cur.execute(
+                    "INSERT INTO members(number,name,source) VALUES(%s,%s,'sheet') "
+                    "ON CONFLICT(number) DO UPDATE SET name=EXCLUDED.name, source='sheet'",
+                    (number, name))
+            # Remove sheet members no longer in sheet
+            cur.execute("SELECT number FROM members WHERE source='sheet'")
+            db_sheet_nums = {r[0] for r in cur.fetchall()}
+            to_remove = db_sheet_nums - set(sheet_numbers.keys())
+            for number in to_remove:
+                cur.execute("DELETE FROM members WHERE number=%s AND source='sheet'", (number,))
+        conn.commit()
+
+    removed = len(to_remove) if to_remove else 0
+    msg = f"Synced {len(sheet_numbers)} number(s)"
+    if removed:
+        msg += f", removed {removed}"
+    return True, msg
+
 
 def load_schedule():
     with get_db() as conn:
@@ -727,6 +749,17 @@ def trigger():
     threading.Thread(target=start_conference, daemon=True).start()
     return jsonify({"ok": True})
 
+@app.route("/trigger/stop", methods=["POST"])
+@login_required
+def trigger_stop():
+    """Force-reset the running flag if a conference got stuck."""
+    with lock:
+        last_run["running"]           = False
+        last_run["conference_active"] = False
+        last_run["pending"]           = 0
+        last_run["summary_fired"]     = True
+    return jsonify({"ok": True})
+
 # ── API STATE ─────────────────────────────────────────────────────────────────
 
 @app.route("/api/state")
@@ -1015,8 +1048,9 @@ def status():
 <div class='page'>
 
   <!-- START -->
-  <div class='card'>
+  <div class='card' style='display:flex;flex-direction:column;gap:.5rem'>
     <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶&nbsp; Start Conference Now</button>
+    <button id='stop-btn' onclick='stopConference()' style='display:none;width:100%;padding:.6rem;background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:var(--r);font-size:.85rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif'>⏹ Force Stop Conference</button>
   </div>
 
   <!-- HANGUP -->
@@ -1112,8 +1146,9 @@ async function api(url,data,isForm){{
 function renderLastRun(s){{
   const el=document.getElementById("last-run");
   const btn=document.getElementById("trigger-btn");
-  if(s.running){{btn.disabled=true;btn.innerHTML='<span class="live-dot"></span>Conference in Progress';}}
-  else{{btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";}}
+  const stopBtn=document.getElementById("stop-btn");
+  if(s.running){{btn.disabled=true;btn.innerHTML='<span class="live-dot"></span>Conference in Progress';if(stopBtn)stopBtn.style.display='block';}}
+  else{{btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";if(stopBtn)stopBtn.style.display='none';}}
   if(!s.run_time){{el.innerHTML='<p style="color:var(--text3);font-size:.82rem">No conference run yet.</p>';return;}}
   const badge=s.running?'<span style="color:var(--green);font-size:.73rem;font-weight:700">● Live</span>':'';
   const connected=(s.calls||[]).filter(c=>c.status==="connected").length;
@@ -1303,8 +1338,15 @@ async function triggerConference(){{
   const btn=document.getElementById("trigger-btn");
   btn.disabled=true;btn.innerHTML='<span class="live-dot"></span>Starting…';
   const r=await api("/trigger");
-  if(!r.ok){{toast("Already running");btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";}}
+  if(!r.ok){{toast("Already running — use Stop if stuck");btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";}}
   else{{toast("Conference started!");setTimeout(refresh,2000);}}
+}}
+
+async function stopConference(){{
+  if(!confirm("Force-stop the conference? This only resets the status display — it does not hang up active calls."))return;
+  await api("/trigger/stop");
+  toast("Stopped");
+  refresh();
 }}
 async function addNumber(){{
   const num=document.getElementById("new-num").value.trim();
