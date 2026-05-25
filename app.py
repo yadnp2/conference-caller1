@@ -417,8 +417,12 @@ def _conference_ncco():
 
 @app.route("/answer", methods=["GET","POST"])
 def answer():
-    data = request.get_json(silent=True) or request.values
+    # Vonage sends answer webhooks as GET with URL params OR POST JSON
+    data = request.get_json(silent=True) or {}
+    if not data:
+        data = request.values.to_dict()
     uuid = data.get("uuid", "")
+    print(f"[answer] uuid={uuid} to={data.get('to','')} from={data.get('from','')}", flush=True)
 
     with lock:
         is_outbound = uuid in call_map
