@@ -552,6 +552,26 @@ def live_calls():
         calls = [{"uuid":u,"number":e.get("number",""),"name":e.get("name",""),
                   "status":e.get("status",""),"blocked":e.get("number","") in session_blocked}
                  for u,e in call_map.items() if e.get("status") in ("dialing","connected","answered")]
+    # If call_map is empty but we know conference was active, query Vonage directly
+    if not calls:
+        try:
+            import jwt as pyjwt
+            now     = int(time.time())
+            payload = {"application_id": VONAGE_APP_ID, "iat": now, "jti": str(_uuid.uuid4()), "exp": now+300}
+            key     = _private_key.encode() if isinstance(_private_key, str) else _private_key
+            token   = pyjwt.encode(payload, key, algorithm="RS256")
+            resp    = requests.get("https://api.nexmo.com/v1/calls?status=answered&page_size=20",
+                                   headers={"Authorization": f"Bearer {token}"}, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                for c in data.get("_embedded", {}).get("calls", []):
+                    uuid   = c.get("uuid","")
+                    number = c.get("to",{}).get("number","")
+                    name   = get_name(number) if number else ""
+                    calls.append({"uuid": uuid, "number": number, "name": name,
+                                  "status": "connected", "blocked": number in session_blocked})
+        except Exception as e:
+            print(f"Vonage live-calls query error: {e}")
     return jsonify({"calls": calls})
 
 @app.route("/hangup/all", methods=["POST"])
