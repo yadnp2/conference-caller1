@@ -378,7 +378,7 @@ def _play_summary():
     print(f"Summary: {text}")
     for u in uuids:
         try:
-            client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US", level=1.0))
+            client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US", style=2, level=1.0))
         except Exception as e:
             print(f"Summary TTS error {u}: {e}")
 
@@ -463,20 +463,20 @@ def answer():
 
     if is_outbound:
         # Outbound call answered — just join the conference
-        return jsonify([{"action": "talk", "text": "Please hold, joining the conference."}, *_conference_ncco()])
+        return jsonify([{"action": "talk", "style": 2, "text": "Please hold, joining you to the Shmiras HaLashon conference."}, *_conference_ncco()])
 
     # Inbound call — check if member is approved
     from_raw = from_num  # already extracted above
     number   = clean_from
 
     if not number:
-        return jsonify([{"action": "talk", "text": "Sorry, calls with a hidden number cannot join. Goodbye."}])
+        return jsonify([{"action": "talk", "style": 2, "text": "Sorry, calls with a hidden number cannot join. Goodbye."}])
 
     if not is_approved_member(number):
-        return jsonify([{"action": "talk", "text": "Sorry, your number is not registered for this conference. Goodbye."}])
+        return jsonify([{"action": "talk", "style": 2, "text": "Sorry, your number is not registered for this conference. Goodbye."}])
 
     if number in session_blocked:
-        return jsonify([{"action": "talk", "text": "You cannot join this conference session. Goodbye."}])
+        return jsonify([{"action": "talk", "style": 2, "text": "You cannot join this conference session. Goodbye."}])
 
     # Check if conference is still active
     with lock:
@@ -487,15 +487,18 @@ def answer():
         meta = get_latest_recording_meta()
         has_recording = bool(meta.get("url")) or os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
         if has_recording:
+            log_call(number, get_name(number), "heard-recording")
             return jsonify([
-                {"action": "talk", "text": f"The conference has ended. Playing the recording from {meta.get('date','the last session')}."},
+                {"action": "talk", "style": 2, "text": f"The conference has ended. Playing the recording from {meta.get('date','the last session')}."},
                 {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/audio"], "level": 0},
-                {"action": "talk", "text": "Recording complete. Goodbye."},
+                {"action": "talk", "style": 2, "text": "Recording complete. Goodbye."},
             ])
 
+    # Log as inbound-pending (will update to joined or missed in join-press)
+    log_call(number, get_name(number), "inbound-pending")
     # Conference is active or no recording — join live
     return jsonify([
-        {"action": "talk", "text": "Press 1 to join the conference."},
+        {"action": "talk", "style": 2, "text": "Press 1 to join the Shmiras HaLashon conference."},
         {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 6},
          "eventUrl": [f"{BASE_URL}/join-press"]},
     ])
@@ -511,6 +514,9 @@ def join_press():
         from_raw = data.get("from","") or data.get("to","")
         number   = _clean(from_raw)
         name     = get_name(number) if number else ""
+        # Log as inbound-joined
+        if number:
+            log_call(number, name, "inbound-joined")
         if name and get_setting("announcements_enabled") == "true":
             def announce():
                 time.sleep(4)
@@ -522,7 +528,12 @@ def join_press():
                     except: pass
             threading.Thread(target=announce, daemon=True).start()
         return jsonify(_conference_ncco())
-    return jsonify([{"action": "talk", "text": "Goodbye."}])
+    # They didn't press 1 — log as declined
+    from_raw = data.get("from","") or data.get("to","")
+    number   = _clean(from_raw)
+    if number:
+        log_call(number, get_name(number), "inbound-declined")
+    return jsonify([{"action": "talk", "style": 2, "text": "Goodbye."}])
 
 @app.route("/event", methods=["GET","POST"])
 def event():
@@ -625,26 +636,31 @@ def live_calls():
         calls = [{"uuid":u,"number":e.get("number",""),"name":e.get("name",""),
                   "status":e.get("status",""),"blocked":e.get("number","") in session_blocked}
                  for u,e in call_map.items() if e.get("status") in ("dialing","connected","answered")]
-    # If call_map is empty but we know conference was active, query Vonage directly
+    # If local call_map is empty, query Vonage directly (handles server restart mid-conference)
     if not calls:
         try:
             import jwt as pyjwt
             now     = int(time.time())
-            payload = {"application_id": VONAGE_APP_ID, "iat": now, "jti": str(_uuid.uuid4()), "exp": now+300}
+            payload = {"application_id": VONAGE_APP_ID, "iat": now,
+                       "jti": str(_uuid.uuid4()), "exp": now+300}
             key     = _private_key.encode() if isinstance(_private_key, str) else _private_key
             token   = pyjwt.encode(payload, key, algorithm="RS256")
-            resp    = requests.get("https://api.nexmo.com/v1/calls?status=answered&page_size=20",
-                                   headers={"Authorization": f"Bearer {token}"}, timeout=10)
+            resp    = requests.get(
+                "https://api.nexmo.com/v1/calls?status=answered&page_size=20",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5)   # 5-second timeout — never freezes
             if resp.status_code == 200:
-                data = resp.json()
-                for c in data.get("_embedded", {}).get("calls", []):
-                    uuid   = c.get("uuid","")
-                    number = c.get("to",{}).get("number","")
-                    name   = get_name(number) if number else ""
-                    calls.append({"uuid": uuid, "number": number, "name": name,
-                                  "status": "connected", "blocked": number in session_blocked})
+                for c in resp.json().get("_embedded", {}).get("calls", []):
+                    number = c.get("to", {}).get("number", "")
+                    calls.append({
+                        "uuid":    c.get("uuid", ""),
+                        "number":  number,
+                        "name":    get_name(number),
+                        "status":  "connected",
+                        "blocked": number in session_blocked,
+                    })
         except Exception as e:
-            print(f"Vonage live-calls query error: {e}")
+            print(f"[live-calls] Vonage query error: {e}", flush=True)
     return jsonify({"calls": calls})
 
 @app.route("/hangup/all", methods=["POST"])
@@ -820,15 +836,40 @@ def api_state():
 def history():
     calls = get_call_history()
     rows = ""
-    STATUS_COLORS = {"connected":"#22c55e","voicemail":"#f97316","dialing":"#fbbf24",
-                     "busy":"#ef4444","unanswered":"#8899bb","failed":"#ef4444","error":"#ef4444"}
+    STATUS_COLORS = {
+        "connected":       "#22c55e",
+        "voicemail":       "#f97316",
+        "dialing":         "#fbbf24",
+        "busy":            "#ef4444",
+        "unanswered":      "#8899bb",
+        "failed":          "#ef4444",
+        "error":           "#ef4444",
+        "inbound-joined":  "#22c55e",
+        "inbound-pending": "#fbbf24",
+        "inbound-declined":"#8899bb",
+        "heard-recording": "#a78bfa",
+    }
+    STATUS_ICONS = {
+        "connected":       "✅",
+        "voicemail":       "📵",
+        "dialing":         "⏳",
+        "busy":            "🔴",
+        "unanswered":      "🔕",
+        "failed":          "❌",
+        "error":           "❌",
+        "inbound-joined":  "📲",
+        "inbound-pending": "⏳",
+        "inbound-declined":"📵",
+        "heard-recording": "🎧",
+    }
     for c in calls:
         color = STATUS_COLORS.get(c.get("status",""), "#8899bb")
         try:
             dt = c["run_time_et"]
             ts = dt.strftime("%-m/%-d %-I:%M %p") if hasattr(dt,"strftime") else str(dt)
         except: ts = ""
-        rows += f"<tr><td>{ts}</td><td style='font-family:monospace'>{c['number']}</td><td>{c.get('name','')}</td><td style='color:{color}'>{c.get('status','')}</td></tr>"
+        icon = STATUS_ICONS.get(c.get("status",""), "❓")
+        rows += f"<tr><td>{ts}</td><td style='font-family:monospace'>{c['number']}</td><td>{c.get('name','')}</td><td style='color:{color}'>{icon} {c.get('status','')}</td></tr>"
     if not rows:
         rows = "<tr><td colspan='4' style='color:#64748b;text-align:center'>No history yet.</td></tr>"
     return f"""<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'/>
@@ -1010,7 +1051,9 @@ def status():
     .spin-btn:hover{{color:var(--text)}}
     .spin-val{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;
                padding:.26rem 0;font-size:.93rem;font-weight:700;text-align:center;width:2.3rem;
-               font-family:'Inter',sans-serif}}
+               font-family:'Inter',sans-serif;-moz-appearance:textfield}}
+    .spin-val::-webkit-outer-spin-button,.spin-val::-webkit-inner-spin-button{{-webkit-appearance:none;margin:0}}
+    .spin-val:focus{{outline:none;border-color:var(--blue)}}
     .sep{{color:var(--text3);font-size:.95rem;font-weight:700;padding:0 .05rem}}
     .ampm-grp{{display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden}}
     .ampm-opt{{background:var(--bg);color:var(--text3);border:none;padding:.26rem .5rem;font-size:.78rem;
@@ -1235,29 +1278,51 @@ function updSpin(day){{
   const s=SS[day];
   const h=document.getElementById(`sh-${{day}}`);
   const m=document.getElementById(`sm-${{day}}`);
-  if(h)h.textContent=String(s.h).padStart(2,"0");
-  if(m)m.textContent=String(s.m).padStart(2,"0");
+  if(h)h.value=String(s.h).padStart(2,"0");
+  if(m)m.value=String(s.m).padStart(2,"0");
   ["AM","PM"].forEach(v=>{{
     const el=document.getElementById(`ap-${{day}}-${{v}}`);
     if(el)el.className="ampm-opt"+(s.ap===v?" sel":"");
   }});
+}}
+
+function setHDirect(day, val){{
+  let h = parseInt(val);
+  if(isNaN(h)) return;
+  h = Math.max(1, Math.min(12, h));
+  SS[day].h = h;
+  updSpin(day);
+}}
+
+function setMDirect(day, val){{
+  let m = parseInt(val);
+  if(isNaN(m)) return;
+  m = Math.max(0, Math.min(59, m));
+  SS[day].m = m;
+  updSpin(day);
 }}
 function spinH(day,d){{SS[day].h=(SS[day].h-1+d+12)%12+1;updSpin(day);}}
 function spinM(day,d){{SS[day].m=((SS[day].m+d)+60)%60;updSpin(day);}}
 function setAP(day,v){{SS[day].ap=v;updSpin(day);}}
 function spinnerHTML(day){{
   const s=SS[day];
-  return `<div class="spin-wrap"><button class="spin-btn" onclick="spinH(${{day}},1)">▲</button>
-    <div class="spin-val" id="sh-${{day}}">${{String(s.h).padStart(2,"0")}}</div>
-    <button class="spin-btn" onclick="spinH(${{day}},-1)">▼</button></div>
-    <span class="sep">:</span>
-    <div class="spin-wrap"><button class="spin-btn" onclick="spinM(${{day}},1)">▲</button>
-    <div class="spin-val" id="sm-${{day}}">${{String(s.m).padStart(2,"0")}}</div>
-    <button class="spin-btn" onclick="spinM(${{day}},-1)">▼</button></div>
-    <div class="ampm-grp">
-      <button class="ampm-opt${{s.ap==="AM"?" sel":""}}" id="ap-${{day}}-AM" onclick="setAP(${{day}},'AM')">AM</button>
-      <button class="ampm-opt${{s.ap==="PM"?" sel":""}}" id="ap-${{day}}-PM" onclick="setAP(${{day}},'PM')">PM</button>
-    </div>`;
+  return `<div class="spin-wrap">
+    <button class="spin-btn" onclick="spinH(${{day}},1)">▲</button>
+    <input class="spin-val" type="number" id="sh-${{day}}" value="${{String(s.h).padStart(2,'00')}}"
+      min="1" max="12" onchange="setHDirect(${{day}},this.value)" onclick="this.select()"/>
+    <button class="spin-btn" onclick="spinH(${{day}},-1)">▼</button>
+  </div>
+  <span class="sep">:</span>
+  <div class="spin-wrap">
+    <button class="spin-btn" onclick="spinM(${{day}},1)">▲</button>
+    <input class="spin-val" type="number" id="sm-${{day}}" value="${{String(s.m).padStart(2,'00')}}"
+      min="0" max="59" onchange="setMDirect(${{day}},this.value)" onclick="this.select()"/>
+    <button class="spin-btn" onclick="spinM(${{day}},-1)">▼</button>
+  </div>
+  <div class="ampm-grp">
+    <button class="ampm-opt${{s.ap==="AM"?" sel":""}}" id="ap-${{day}}-AM" onclick="setAP(${{day}},'AM')">AM</button>
+    <button class="ampm-opt${{s.ap==="PM"?" sel":""}}" id="ap-${{day}}-PM" onclick="setAP(${{day}},'PM')">PM</button>
+  </div>`;
 }}
 function renderSchedule(schedule){{
   const grid=document.getElementById("day-grid");
