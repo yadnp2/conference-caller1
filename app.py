@@ -1036,254 +1036,377 @@ def status():
   <title>Conference Manager</title>
   <link rel='manifest' href='/manifest.json'/>
   <meta name='theme-color' content='#0a0f1e'/>
-  <link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap' rel='stylesheet'/>
+  <link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap' rel='stylesheet'/>
   <style>
-    :root{{--bg:#0a0f1e;--surface:#111827;--surface2:#1a2235;--border:#1f2d45;--border2:#2a3a55;
-          --text:#f0f4ff;--text2:#8899bb;--text3:#4a5f80;--blue:#3b82f6;--blue2:#1d4ed8;
-          --green:#22c55e;--orange:#f97316;--red:#ef4444;--purple:#a78bfa;--yellow:#fbbf24;
-          --r:12px;--rs:8px;--shadow:0 4px 24px rgba(0,0,0,.4)}}
+    :root{{
+      --bg:#0a0f1e;--surface:#111827;--surface2:#1a2235;--surface3:#0f1929;
+      --border:#1f2d45;--border2:#2a3a55;
+      --text:#f0f4ff;--text2:#8899bb;--text3:#4a5f80;
+      --blue:#3b82f6;--blue2:#1d4ed8;--blue-glow:rgba(59,130,246,.12);
+      --green:#22c55e;--orange:#f97316;--red:#ef4444;--yellow:#fbbf24;--purple:#a78bfa;
+      --r:14px;--rs:9px;--shadow:0 4px 32px rgba(0,0,0,.35);
+      --admin-bg:#070c14;--admin-surface:#0d1520;--admin-border:#162030;
+    }}
     *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:4rem}}
-    .topbar{{background:var(--surface);border-bottom:1px solid var(--border);padding:.85rem 1.5rem;
-             display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}}
-    .brand{{display:flex;align-items:center;gap:.6rem}}
-    .brand-icon{{width:28px;height:28px;background:linear-gradient(135deg,#3b82f6,#6366f1);border-radius:8px;
-                 display:flex;align-items:center;justify-content:center;font-size:.9rem}}
-    .brand-name{{font-size:1rem;font-weight:700}}
+    body{{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}}
+
+    /* ── Top Bar ── */
+    .topbar{{background:rgba(10,15,30,.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);
+             padding:.9rem 2rem;display:flex;align-items:center;justify-content:space-between;
+             position:sticky;top:0;z-index:200}}
+    .brand{{display:flex;align-items:center;gap:.7rem}}
+    .brand-icon{{width:32px;height:32px;background:linear-gradient(135deg,#3b82f6,#6366f1);
+                 border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem}}
+    .brand-name{{font-size:1.05rem;font-weight:700;letter-spacing:-.01em}}
+    .brand-sub{{font-size:.72rem;color:var(--text3);margin-left:.5rem}}
+    .topbar-right{{display:flex;align-items:center;gap:1rem}}
     .signout{{background:none;border:1px solid var(--border2);color:var(--text2);border-radius:var(--rs);
-              padding:.35rem .85rem;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}}
+              padding:.38rem .9rem;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}}
     .signout:hover{{border-color:var(--blue);color:var(--text)}}
-    .page{{max-width:640px;margin:0 auto;padding:1.5rem 1rem;display:flex;flex-direction:column;gap:1.25rem}}
+
+    /* ── Page Layout ── */
+    .page{{padding:2rem;max-width:1600px;margin:0 auto}}
+    .main-grid{{display:grid;grid-template-columns:320px 1fr 320px;gap:1.5rem;align-items:start}}
+    .center-grid{{display:flex;flex-direction:column;gap:1.5rem}}
+    .side-grid{{display:flex;flex-direction:column;gap:1.5rem}}
+    @media(max-width:1200px){{
+      .main-grid{{grid-template-columns:280px 1fr;}}
+      .right-col{{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;}}
+    }}
+    @media(max-width:768px){{
+      .page{{padding:1rem}}
+      .main-grid{{grid-template-columns:1fr}}
+      .right-col{{grid-template-columns:1fr}}
+    }}
+
+    /* ── Cards ── */
     .card{{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
-           padding:1.25rem;box-shadow:var(--shadow)}}
-    .card-hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}}
-    .card-title{{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}}
-    .trigger-btn{{width:100%;padding:.95rem;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;
-                  border:none;border-radius:var(--r);font-size:1rem;font-weight:700;cursor:pointer;
-                  font-family:'Inter',sans-serif;box-shadow:0 4px 20px rgba(59,130,246,.3);transition:all .2s}}
-    .trigger-btn:hover:not([disabled]){{transform:translateY(-1px);box-shadow:0 6px 28px rgba(59,130,246,.45)}}
+           padding:1.5rem;box-shadow:var(--shadow)}}
+    .card-hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}}
+    .card-title{{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}}
+    .card-link{{font-size:.74rem;color:var(--blue)}}
+
+    /* ── Hero Start Button ── */
+    .trigger-btn{{width:100%;padding:1.1rem;background:linear-gradient(135deg,#2563eb,#4f46e5);
+                  color:#fff;border:none;border-radius:var(--r);font-size:1.05rem;font-weight:700;
+                  cursor:pointer;font-family:'Inter',sans-serif;letter-spacing:-.01em;
+                  box-shadow:0 4px 24px rgba(59,130,246,.35);transition:all .2s}}
+    .trigger-btn:hover:not([disabled]){{transform:translateY(-2px);box-shadow:0 8px 32px rgba(59,130,246,.5)}}
     .trigger-btn[disabled]{{background:linear-gradient(135deg,#1e3a5f,#2a2f6e);color:var(--text3);
                             cursor:not-allowed;box-shadow:none;transform:none}}
     @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.4}}}}
     .live-dot{{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;
-               margin-right:.4rem;animation:pulse 1.5s infinite}}
-    .dialin{{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);
-             padding:.8rem 1rem;display:flex;align-items:center;justify-content:space-between}}
-    .dialin-num{{font-size:1.05rem;font-weight:700;letter-spacing:.06em}}
-    .run-meta{{display:flex;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);
-               border-radius:var(--rs);padding:.6rem .85rem;font-size:.8rem;color:var(--text2);margin-bottom:.6rem}}
+               margin-right:.5rem;animation:pulse 1.5s infinite}}
+
+    /* ── Stat Pills ── */
+    .stat-row{{display:flex;gap:.75rem;margin-top:.85rem}}
+    .stat-pill{{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);
+                padding:.6rem .85rem;text-align:center}}
+    .stat-val{{font-size:1.3rem;font-weight:800;line-height:1}}
+    .stat-lbl{{font-size:.67rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:.2rem}}
+
+    /* ── Dial-in ── */
+    .dialin-box{{background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(99,102,241,.08));
+                 border:1px solid rgba(59,130,246,.2);border-radius:var(--rs);padding:1rem 1.25rem}}
+    .dialin-num{{font-size:1.4rem;font-weight:800;letter-spacing:.08em;color:var(--text);margin-top:.2rem}}
+
+    /* ── Last Conference ── */
+    .run-meta{{display:flex;justify-content:space-between;align-items:center;
+               background:var(--surface2);border:1px solid var(--border);
+               border-radius:var(--rs);padding:.65rem 1rem;font-size:.8rem;color:var(--text2);margin-bottom:.6rem}}
     .run-counts{{font-weight:700;color:var(--green)}}
-    .call-row{{display:flex;align-items:center;gap:.55rem;padding:.5rem .75rem;background:var(--surface2);
-               border:1px solid var(--border);border-radius:var(--rs);font-size:.82rem;margin-bottom:.3rem}}
+    .call-row{{display:flex;align-items:center;gap:.6rem;padding:.5rem .85rem;
+               background:var(--surface2);border:1px solid var(--border);
+               border-radius:var(--rs);font-size:.82rem;margin-bottom:.3rem}}
     .call-num{{font-weight:600}}
-    .call-name{{color:var(--text2);font-size:.75rem;flex:1}}
-    .call-stat{{font-weight:600;font-size:.75rem;text-transform:capitalize}}
-    .sec-label{{font-size:.69rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:.3rem 0 .2rem}}
-    .num-row{{display:flex;align-items:center;gap:.45rem;padding:.55rem .75rem;background:var(--surface2);
-              border:1px solid var(--border);border-radius:var(--rs);margin-bottom:.3rem;transition:border-color .15s}}
-    .num-row.paused{{opacity:.55;border-style:dashed}}
+    .call-name{{color:var(--text2);font-size:.76rem;flex:1}}
+    .call-stat{{font-weight:600;font-size:.76rem;text-transform:capitalize}}
+
+    /* ── Members ── */
+    .sec-label{{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+                padding:.3rem 0 .3rem;display:flex;align-items:center;gap:.4rem}}
+    .num-row{{display:flex;align-items:center;gap:.45rem;padding:.55rem .85rem;
+              background:var(--surface2);border:1px solid var(--border);
+              border-radius:var(--rs);margin-bottom:.3rem}}
+    .num-row.paused{{opacity:.5;border-style:dashed}}
     .num-main{{flex:1;min-width:0}}
     .num-phone{{font-weight:600;font-size:.85rem}}
-    .num-name-disp{{font-size:.74rem;color:var(--text2);margin-top:.08rem}}
-    .tag{{font-size:.64rem;font-weight:700;padding:.1rem .35rem;border-radius:4px;margin-left:.25rem}}
+    .num-name-disp{{font-size:.73rem;color:var(--text2);margin-top:.06rem}}
+    .tag{{font-size:.62rem;font-weight:700;padding:.1rem .35rem;border-radius:4px;margin-left:.2rem}}
     .tag-sheet{{background:rgba(59,130,246,.15);color:#7dd3fc}}
     .tag-paused{{background:rgba(249,115,22,.15);color:var(--orange)}}
     .num-actions{{display:flex;gap:.3rem;flex-shrink:0;flex-wrap:wrap}}
-    .name-inp{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;
-               padding:.28rem .5rem;font-size:.76rem;font-family:'Inter',sans-serif;width:85px}}
+    .name-inp{{background:var(--bg);border:1px solid var(--border2);color:var(--text);
+               border-radius:6px;padding:.28rem .5rem;font-size:.75rem;
+               font-family:'Inter',sans-serif;width:90px}}
     .name-inp:focus{{outline:none;border-color:var(--blue)}}
-    .btn{{border:none;border-radius:6px;padding:.28rem .6rem;font-size:.74rem;font-weight:600;
-          cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
-    .btn-save{{background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.3)}}
-    .btn-pause{{background:rgba(249,115,22,.1);color:var(--orange);border:1px solid rgba(249,115,22,.25)}}
-    .btn-resume{{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25)}}
-    .btn-rm{{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}}
+    .btn{{border:none;border-radius:6px;padding:.28rem .6rem;font-size:.73rem;font-weight:600;
+          cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;transition:all .15s}}
+    .btn-save{{background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.25)}}
+    .btn-pause{{background:rgba(249,115,22,.08);color:var(--orange);border:1px solid rgba(249,115,22,.2)}}
+    .btn-resume{{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.2)}}
+    .btn-rm{{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18)}}
     .add-row{{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.75rem}}
-    .add-inp{{flex:1;min-width:100px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);
-              border-radius:var(--rs);padding:.55rem .75rem;font-size:.83rem;font-family:'Inter',sans-serif}}
+    .add-inp{{flex:1;min-width:100px;background:var(--surface2);border:1px solid var(--border2);
+              color:var(--text);border-radius:var(--rs);padding:.58rem .85rem;
+              font-size:.83rem;font-family:'Inter',sans-serif}}
     .add-inp:focus{{outline:none;border-color:var(--blue)}}
-    .btn-add{{background:linear-gradient(135deg,#15803d,#16a34a);color:#fff;border:none;border-radius:var(--rs);
-              padding:.55rem 1rem;font-size:.83rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-add{{background:linear-gradient(135deg,#15803d,#16a34a);color:#fff;border:none;
+              border-radius:var(--rs);padding:.58rem 1rem;font-size:.83rem;font-weight:700;
+              cursor:pointer;font-family:'Inter',sans-serif}}
+
+    /* ── Schedule ── */
     .day-grid{{display:flex;flex-direction:column;gap:.4rem}}
-    .day-row{{display:flex;align-items:center;gap:.5rem;padding:.55rem .75rem;background:var(--surface2);
-              border:1px solid var(--border);border-radius:var(--rs);flex-wrap:wrap;transition:border-color .2s}}
+    .day-row{{display:flex;align-items:center;gap:.5rem;padding:.55rem .75rem;
+              background:var(--surface2);border:1px solid var(--border);
+              border-radius:var(--rs);flex-wrap:wrap;transition:border-color .2s}}
     .day-row.active{{border-color:var(--blue);background:rgba(59,130,246,.05)}}
-    .day-name{{min-width:80px;font-size:.84rem;font-weight:600}}
+    .day-name{{min-width:76px;font-size:.83rem;font-weight:600}}
     .day-form{{display:flex;align-items:center;gap:.35rem;flex:1;flex-wrap:wrap}}
     .spin-wrap{{display:flex;flex-direction:column;align-items:center;gap:1px}}
-    .spin-btn{{background:none;border:none;color:var(--text3);font-size:.6rem;cursor:pointer;
-               padding:.04rem .45rem;font-family:'Inter',sans-serif}}
+    .spin-btn{{background:none;border:none;color:var(--text3);font-size:.58rem;cursor:pointer;
+               padding:.04rem .4rem;font-family:'Inter',sans-serif}}
     .spin-btn:hover{{color:var(--text)}}
-    .spin-val{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;
-               padding:.26rem 0;font-size:.93rem;font-weight:700;text-align:center;width:2.3rem;
-               font-family:'Inter',sans-serif;-moz-appearance:textfield}}
+    .spin-val{{background:var(--bg);border:1px solid var(--border2);color:var(--text);
+               border-radius:6px;padding:.24rem 0;font-size:.9rem;font-weight:700;
+               text-align:center;width:2.2rem;font-family:'Inter',sans-serif;
+               -moz-appearance:textfield}}
     .spin-val::-webkit-outer-spin-button,.spin-val::-webkit-inner-spin-button{{-webkit-appearance:none;margin:0}}
     .spin-val:focus{{outline:none;border-color:var(--blue)}}
-    .sep{{color:var(--text3);font-size:.95rem;font-weight:700;padding:0 .05rem}}
+    .sep{{color:var(--text3);font-size:.9rem;font-weight:700;padding:0 .05rem}}
     .ampm-grp{{display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden}}
-    .ampm-opt{{background:var(--bg);color:var(--text3);border:none;padding:.26rem .5rem;font-size:.78rem;
-               font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}}
+    .ampm-opt{{background:var(--bg);color:var(--text3);border:none;padding:.24rem .48rem;
+               font-size:.76rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
     .ampm-opt.sel{{background:var(--blue);color:#fff}}
     .btn-set{{background:linear-gradient(135deg,var(--blue2),var(--blue));color:#fff;border:none;
-              border-radius:6px;padding:.3rem .8rem;font-size:.78rem;font-weight:700;cursor:pointer;
+              border-radius:6px;padding:.28rem .75rem;font-size:.76rem;font-weight:700;cursor:pointer;
               font-family:'Inter',sans-serif}}
-    .btn-clr{{background:none;border:none;color:var(--red);font-size:.95rem;cursor:pointer;
-              padding:.1rem .3rem;opacity:.7}}
+    .btn-clr{{background:none;border:none;color:var(--red);font-size:.9rem;cursor:pointer;
+              padding:.1rem .25rem;opacity:.65}}
     .btn-clr:hover{{opacity:1}}
-    .toggle-row{{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;padding:.45rem 0}}
+
+    /* ── Toggles ── */
+    .toggle-row{{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;padding:.5rem 0}}
     .toggle-row+.toggle-row{{border-top:1px solid var(--border)}}
-    .toggle-btn{{border:none;border-radius:20px;padding:.35rem .9rem;font-size:.8rem;font-weight:700;
+    .toggle-btn{{border:none;border-radius:20px;padding:.35rem .9rem;font-size:.78rem;font-weight:700;
                  cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
-    .ton{{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}}
+    .ton{{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}}
     .toff{{background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}}
-    .thint{{font-size:.74rem;color:var(--text3);flex:1;line-height:1.4}}
-    .rec-info{{font-size:.76rem;color:var(--text2);margin:.45rem 0 0;padding:.45rem .7rem;
+    .thint{{font-size:.73rem;color:var(--text3);flex:1;line-height:1.4}}
+    .rec-info{{font-size:.75rem;color:var(--text2);margin:.45rem 0 0;padding:.45rem .75rem;
                background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs)}}
-    .btn-dl{{display:inline-flex;align-items:center;gap:.3rem;background:rgba(59,130,246,.12);color:var(--blue);
-             border:1px solid rgba(59,130,246,.25);border-radius:var(--rs);padding:.38rem .8rem;
-             font-size:.78rem;font-weight:600;font-family:'Inter',sans-serif;text-decoration:none;margin-top:.45rem}}
+    .btn-dl{{display:inline-flex;align-items:center;gap:.3rem;background:rgba(59,130,246,.1);
+             color:var(--blue);border:1px solid rgba(59,130,246,.22);border-radius:var(--rs);
+             padding:.38rem .8rem;font-size:.77rem;font-weight:600;font-family:'Inter',sans-serif;
+             text-decoration:none;margin-top:.45rem}}
+
+    /* ── Hangup ── */
     .hup-all-row{{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.6rem}}
-    .btn-hup-all{{flex:1;padding:.6rem;background:rgba(239,68,68,.12);color:var(--red);
-                  border:1px solid rgba(239,68,68,.25);border-radius:var(--rs);font-size:.83rem;
+    .btn-hup-all{{flex:1;padding:.58rem;background:rgba(239,68,68,.1);color:var(--red);
+                  border:1px solid rgba(239,68,68,.22);border-radius:var(--rs);font-size:.82rem;
                   font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
-    .btn-hup-blk{{flex:1;padding:.6rem;background:rgba(249,115,22,.1);color:var(--orange);
-                  border:1px solid rgba(249,115,22,.22);border-radius:var(--rs);font-size:.83rem;
+    .btn-hup-blk{{flex:1;padding:.58rem;background:rgba(249,115,22,.08);color:var(--orange);
+                  border:1px solid rgba(249,115,22,.2);border-radius:var(--rs);font-size:.82rem;
                   font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
-    .live-row{{display:flex;align-items:center;justify-content:space-between;gap:.45rem;padding:.5rem .75rem;
-               background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);
-               font-size:.81rem;margin-bottom:.3rem}}
+    .live-row{{display:flex;align-items:center;justify-content:space-between;gap:.45rem;
+               padding:.5rem .85rem;background:var(--surface2);border:1px solid var(--border);
+               border-radius:var(--rs);font-size:.81rem;margin-bottom:.3rem}}
     .live-acts{{display:flex;gap:.3rem}}
-    .btn-hup{{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.22);
-              border-radius:6px;padding:.24rem .55rem;font-size:.73rem;font-weight:700;cursor:pointer;
+    .btn-hup{{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2);
+              border-radius:6px;padding:.24rem .52rem;font-size:.72rem;font-weight:700;cursor:pointer;
               font-family:'Inter',sans-serif}}
-    .btn-hup-b{{background:rgba(249,115,22,.1);color:var(--orange);border:1px solid rgba(249,115,22,.2);
-                border-radius:6px;padding:.24rem .55rem;font-size:.73rem;font-weight:700;cursor:pointer;
+    .btn-hup-b{{background:rgba(249,115,22,.08);color:var(--orange);border:1px solid rgba(249,115,22,.18);
+                border-radius:6px;padding:.24rem .52rem;font-size:.72rem;font-weight:700;cursor:pointer;
                 font-family:'Inter',sans-serif}}
-    .btn-sync{{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25);
-               border-radius:var(--rs);padding:.42rem .9rem;font-size:.8rem;font-weight:700;cursor:pointer;
-               font-family:'Inter',sans-serif}}
-    .footer{{display:flex;justify-content:center;gap:1.25rem;padding:1rem 0;font-size:.74rem}}
-    .footer a{{color:var(--text3);transition:color .15s}}
-    .footer a:hover{{color:var(--blue)}}
-    .toast{{position:fixed;bottom:1.75rem;left:50%;transform:translateX(-50%);background:var(--surface);
-            border:1px solid var(--border2);color:var(--text);padding:.55rem 1.3rem;border-radius:999px;
-            font-size:.81rem;font-weight:500;opacity:0;transition:opacity .25s;pointer-events:none;
-            z-index:999;box-shadow:var(--shadow);white-space:nowrap}}
+
+    /* ── Sheets ── */
+    .btn-sync{{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.2);
+               border-radius:var(--rs);padding:.42rem .9rem;font-size:.79rem;font-weight:700;
+               cursor:pointer;font-family:'Inter',sans-serif}}
+
+    /* ── ADMIN TEST SECTION ── */
+    .admin-zone{{background:var(--admin-bg);border:1px solid var(--admin-border);
+                 border-radius:var(--r);overflow:hidden;box-shadow:0 0 40px rgba(0,0,0,.5)}}
+    .admin-header{{background:linear-gradient(135deg,#0d1a2e,#142236);
+                   border-bottom:1px solid var(--admin-border);padding:1rem 1.5rem;
+                   display:flex;align-items:center;justify-content:space-between}}
+    .admin-title{{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
+                  color:#3b82f6;display:flex;align-items:center;gap:.5rem}}
+    .admin-badge{{background:rgba(234,179,8,.12);color:#fbbf24;border:1px solid rgba(234,179,8,.2);
+                  border-radius:4px;padding:.1rem .4rem;font-size:.65rem;font-weight:700;
+                  text-transform:uppercase;letter-spacing:.06em}}
+    .admin-body{{padding:1.5rem}}
+    .admin-desc{{font-size:.78rem;color:#4a6080;margin-bottom:1rem;line-height:1.5;
+                 padding:.65rem .9rem;background:rgba(234,179,8,.04);
+                 border:1px solid rgba(234,179,8,.1);border-radius:var(--rs)}}
+    .admin-inp{{width:100%;background:#0a1220;border:1px solid #1a2d45;color:#c8d8f0;
+                border-radius:var(--rs);padding:.6rem .85rem;font-size:.84rem;
+                font-family:'Inter',sans-serif;margin-bottom:.4rem}}
+    .admin-inp:focus{{outline:none;border-color:#3b82f6}}
+    .admin-btn-row{{display:flex;gap:.5rem;margin-top:.6rem;flex-wrap:wrap}}
+    .btn-add-test{{background:#0d1a2e;color:#4a7ab5;border:1px solid #1a3050;
+                   border-radius:var(--rs);padding:.45rem .85rem;font-size:.78rem;font-weight:600;
+                   cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-add-test:hover{{border-color:#3b82f6;color:#7dd3fc}}
+    .btn-run-test{{flex:1;background:linear-gradient(135deg,#1a2d10,#2d4a18);color:#86efac;
+                   border:1px solid #2d4a18;border-radius:var(--rs);padding:.5rem 1rem;
+                   font-size:.85rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-run-test:hover{{background:linear-gradient(135deg,#2d4a18,#3d6424);border-color:#4ade80}}
+
+    /* ── Toast ── */
+    .toast{{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);
+            background:var(--surface);border:1px solid var(--border2);color:var(--text);
+            padding:.6rem 1.4rem;border-radius:999px;font-size:.81rem;font-weight:500;
+            opacity:0;transition:opacity .25s;pointer-events:none;z-index:999;
+            box-shadow:var(--shadow);white-space:nowrap}}
     .toast.show{{opacity:1}}
   </style>
 </head>
 <body>
+
+<!-- Top Bar -->
 <div class='topbar'>
   <div class='brand'>
     <div class='brand-icon'>📞</div>
     <span class='brand-name'>Conference Manager</span>
+    <span class='brand-sub'>Shmiras HaLashon</span>
   </div>
-  <form method='POST' action='/logout' style='margin:0'>
-    <button class='signout'>Sign out</button>
-  </form>
+  <div class='topbar-right'>
+    <a href='/history' style='font-size:.8rem;color:var(--text2);text-decoration:none'>📋 History</a>
+    <form method='POST' action='/logout' style='margin:0'>
+      <button class='signout'>Sign out</button>
+    </form>
+  </div>
 </div>
+
 <div class='page'>
+<div class='main-grid'>
 
-  <!-- START -->
-  <div class='card' style='display:flex;flex-direction:column;gap:.5rem'>
-    <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶&nbsp; Start Conference Now</button>
-    <button id='stop-btn' onclick='stopConference()' style='display:none;width:100%;padding:.6rem;background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:var(--r);font-size:.85rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif'>⏹ Force Stop Conference</button>
-  </div>
+  <!-- LEFT COLUMN -->
+  <div class='side-grid'>
 
-  <!-- TEST MODE -->
-  <div class='card'>
-    <div class='card-hdr'>
-      <span class='card-title'>🧪 Test Mode</span>
-      <span style='font-size:.72rem;color:var(--text3)'>Real members will NOT be called</span>
-    </div>
-    <p style='font-size:.77rem;color:var(--text2);margin-bottom:.75rem'>Enter the number(s) you want to test with. Only these numbers will be dialed.</p>
-    <div id='test-numbers'>
-      <div class='add-row' style='margin-bottom:.4rem'>
-        <input class='add-inp' type='tel' placeholder='Number e.g. 2025551234' id='test-num-0'/>
+    <!-- START CONFERENCE -->
+    <div class='card'>
+      <div class='card-hdr'><span class='card-title'>Conference</span></div>
+      <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶&nbsp; Start Conference Now</button>
+      <button id='stop-btn' onclick='stopConference()'
+        style='display:none;width:100%;margin-top:.5rem;padding:.6rem;background:rgba(239,68,68,.1);
+               color:#ef4444;border:1px solid rgba(239,68,68,.22);border-radius:var(--r);
+               font-size:.84rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif'>
+        ⏹ Force Stop
+      </button>
+      <div class='stat-row' id='stat-row'>
+        <div class='stat-pill'><div class='stat-val' id='stat-connected'>—</div><div class='stat-lbl'>Connected</div></div>
+        <div class='stat-pill'><div class='stat-val' id='stat-total'>—</div><div class='stat-lbl'>Total Dialed</div></div>
       </div>
     </div>
-    <div style='display:flex;gap:.5rem;margin-top:.35rem;flex-wrap:wrap'>
-      <button onclick='addTestNumber()' style='background:var(--surface2);color:var(--text2);border:1px solid var(--border2);border-radius:var(--rs);padding:.45rem .9rem;font-size:.8rem;font-weight:600;cursor:pointer;font-family:Inter,sans-serif'>+ Add Number</button>
-      <button onclick='runTest()' style='background:linear-gradient(135deg,#854d0e,#a16207);color:#fef08a;border:none;border-radius:var(--rs);padding:.45rem 1.1rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;flex:1'>▶ Run Test Conference</button>
+
+    <!-- DIAL-IN -->
+    <div class='card'>
+      <div class='card-hdr'><span class='card-title'>Dial-In Number</span></div>
+      <div class='dialin-box'>
+        <div style='font-size:.75rem;color:var(--text3)'>Members call in directly:</div>
+        <div class='dialin-num'>{dial_in}</div>
+      </div>
     </div>
-  </div>
 
-  <!-- HANGUP -->
-  <div class='card'>
-    <div class='card-hdr'><span class='card-title'>🔴 Active Call Controls</span></div>
-    <div id='hangup-controls'><p style='color:var(--text3);font-size:.82rem'>No active calls.</p></div>
-  </div>
-
-  <!-- DIAL IN -->
-  <div class='card'>
-    <div class='card-hdr'><span class='card-title'>Dial-In Number</span></div>
-    <div class='dialin'>
-      <span style='font-size:.79rem;color:var(--text2)'>Members call in:</span>
-      <span class='dialin-num'>{dial_in}</span>
+    <!-- RECORDING & SETTINGS -->
+    <div class='card'>
+      <div class='card-hdr'><span class='card-title'>Recording</span></div>
+      <div id='rec-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
     </div>
-  </div>
 
-  <!-- LAST CONFERENCE -->
-  <div class='card'>
-    <div class='card-hdr'>
-      <span class='card-title'>Last Conference</span>
-      <a href='/history' style='font-size:.74rem;color:var(--blue)'>History →</a>
+    <div class='card'>
+      <div class='card-hdr'><span class='card-title'>Join Announcements</span></div>
+      <div id='ann-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
     </div>
-    <div id='last-run'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
-  </div>
 
-  <!-- MEMBERS -->
-  <div class='card'>
-    <div class='card-hdr'>
-      <span class='card-title'>Phone Numbers</span>
-      <span id='num-count' style='font-size:.72rem;background:rgba(59,130,246,.15);color:var(--blue);padding:.18rem .5rem;border-radius:999px;font-weight:700'>0</span>
+    <!-- SHEETS -->
+    <div class='card'>
+      <div class='card-hdr'><span class='card-title'>Google Sheets Sync</span></div>
+      <p style='font-size:.75rem;color:var(--text2);margin-bottom:.65rem'>Col A = name · Col B = number · Row 1 = header</p>
+      <div id='sheets-section'></div>
     </div>
-    <div class='add-row'>
-      <input class='add-inp' type='tel'  id='new-num'  placeholder='Number e.g. 2025551234'/>
-      <input class='add-inp' type='text' id='new-name' placeholder='Name (optional)'/>
-      <button class='btn-add' onclick='addNumber()'>+ Add</button>
+
+  </div><!-- /left col -->
+
+  <!-- CENTER COLUMN -->
+  <div class='center-grid'>
+
+    <!-- ACTIVE CALL CONTROLS -->
+    <div class='card'>
+      <div class='card-hdr'><span class='card-title'>🔴 Active Call Controls</span></div>
+      <div id='hangup-controls'><p style='color:var(--text3);font-size:.82rem'>No active calls.</p></div>
     </div>
-    <div id='members-list'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
-  </div>
 
-  <!-- SCHEDULE -->
-  <div class='card'>
-    <div class='card-hdr'><span class='card-title'>Schedule</span></div>
-    <div class='day-grid' id='day-grid'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
-    <p style='font-size:.72rem;color:var(--text3);margin-top:.5rem'>Times are Eastern (ET). Press Set to save.</p>
-  </div>
+    <!-- LAST CONFERENCE -->
+    <div class='card'>
+      <div class='card-hdr'>
+        <span class='card-title'>Last Conference</span>
+        <a class='card-link' href='/history'>View full history →</a>
+      </div>
+      <div id='last-run'><p style='color:var(--text3);font-size:.82rem'>No conference run yet.</p></div>
+    </div>
 
-  <!-- RECORDING -->
-  <div class='card'>
-    <div class='card-hdr'><span class='card-title'>Recording</span></div>
-    <div id='rec-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
-  </div>
+    <!-- PHONE NUMBERS -->
+    <div class='card'>
+      <div class='card-hdr'>
+        <span class='card-title'>Phone Numbers</span>
+        <span id='num-count' style='font-size:.72rem;background:rgba(59,130,246,.12);color:var(--blue);
+              padding:.18rem .55rem;border-radius:999px;font-weight:700'>0</span>
+      </div>
+      <div class='add-row'>
+        <input class='add-inp' type='tel'  id='new-num'  placeholder='Number e.g. 2025551234'/>
+        <input class='add-inp' type='text' id='new-name' placeholder='Name (optional)'/>
+        <button class='btn-add' onclick='addNumber()'>+ Add</button>
+      </div>
+      <div id='members-list'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+    </div>
 
-  <!-- ANNOUNCEMENTS -->
-  <div class='card'>
-    <div class='card-hdr'><span class='card-title'>Join Announcements</span></div>
-    <div id='ann-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
-  </div>
+  </div><!-- /center col -->
 
-  <!-- SHEETS -->
-  <div class='card'>
-    <div class='card-hdr'><span class='card-title'>Google Sheets Sync</span></div>
-    <p style='font-size:.77rem;color:var(--text2);margin-bottom:.7rem'>Syncs automatically on startup. Column A = name, Column B = number.</p>
-    <div id='sheets-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
-  </div>
+  <!-- RIGHT COLUMN -->
+  <div class='side-grid right-col'>
 
-  <div class='footer'>
-    <a href='/history'>📋 Call History</a>
-  </div>
-</div>
+    <!-- SCHEDULE -->
+    <div class='card'>
+      <div class='card-hdr'><span class='card-title'>Schedule</span></div>
+      <div class='day-grid' id='day-grid'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+      <p style='font-size:.71rem;color:var(--text3);margin-top:.5rem'>Times are Eastern (ET) · Press Set to save</p>
+    </div>
+
+    <!-- ADMIN TEST ZONE -->
+    <div class='admin-zone'>
+      <div class='admin-header'>
+        <div class='admin-title'>🧪 Test Mode <span class='admin-badge'>Admin Only</span></div>
+        <span style='font-size:.7rem;color:#2a4060'>Real members not called</span>
+      </div>
+      <div class='admin-body'>
+        <div class='admin-desc'>Enter numbers to test the full conference flow without calling real members. Everything else runs normally.</div>
+        <div id='test-numbers'>
+          <input class='admin-inp' type='tel' placeholder='Number e.g. 2025551234' id='test-num-0'/>
+        </div>
+        <div class='admin-btn-row'>
+          <button class='btn-add-test' onclick='addTestNumber()'>+ Add Number</button>
+          <button class='btn-run-test' onclick='runTest()'>▶ Run Test Conference</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /right col -->
+
+</div><!-- /main-grid -->
+</div><!-- /page -->
 <div class='toast' id='toast'></div>
 
 <script>
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const STAT_COLORS={{connected:"#22c55e",voicemail:"#f97316",dialing:"#fbbf24",
-  busy:"#ef4444",unanswered:"#8899bb",timeout:"#8899bb",failed:"#ef4444",error:"#ef4444"}};
-const STAT_ICONS={{connected:"✅",voicemail:"📵",dialing:"⏳",busy:"🔴",
-  unanswered:"🔕",timeout:"🔕",failed:"❌",error:"❌"}};
+  busy:"#ef4444",unanswered:"#8899bb",timeout:"#8899bb",failed:"#ef4444",error:"#ef4444",
+  "inbound-joined":"#22c55e","inbound-pending":"#fbbf24","inbound-declined":"#8899bb","heard-recording":"#a78bfa"}};
+const STAT_ICONS={{connected:"✅",voicemail:"📵",dialing:"⏳",busy:"🔴",unanswered:"🔕",
+  timeout:"🔕",failed:"❌",error:"❌","inbound-joined":"📲","inbound-pending":"⏳",
+  "inbound-declined":"📵","heard-recording":"🎧"}};
 
 function toast(msg,dur=2400){{
   const t=document.getElementById("toast");
@@ -1302,19 +1425,31 @@ function renderLastRun(s){{
   const el=document.getElementById("last-run");
   const btn=document.getElementById("trigger-btn");
   const stopBtn=document.getElementById("stop-btn");
-  if(s.running){{btn.disabled=true;btn.innerHTML='<span class="live-dot"></span>Conference in Progress';if(stopBtn)stopBtn.style.display='block';}}
-  else{{btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";if(stopBtn)stopBtn.style.display='none';}}
+  const sc=document.getElementById("stat-connected");
+  const st=document.getElementById("stat-total");
+  if(s.running){{
+    btn.disabled=true;
+    btn.innerHTML='<span class="live-dot"></span>Conference in Progress';
+    if(stopBtn)stopBtn.style.display='block';
+  }}else{{
+    btn.disabled=false;
+    btn.innerHTML="▶&nbsp; Start Conference Now";
+    if(stopBtn)stopBtn.style.display='none';
+  }}
+  const calls=s.calls||[];
+  const connected=calls.filter(c=>c.status==="connected").length;
+  if(sc)sc.textContent=s.run_time?connected:"—";
+  if(st)st.textContent=s.run_time?calls.length:"—";
   if(!s.run_time){{el.innerHTML='<p style="color:var(--text3);font-size:.82rem">No conference run yet.</p>';return;}}
-  const badge=s.running?'<span style="color:var(--green);font-size:.73rem;font-weight:700">● Live</span>':'';
-  const connected=(s.calls||[]).filter(c=>c.status==="connected").length;
-  const rows=(s.calls||[]).map(c=>{{
+  const badge=s.running?'<span style="color:var(--green);font-size:.72rem;font-weight:700">● Live</span>':'';
+  const rows=calls.map(c=>{{
     const icon=STAT_ICONS[c.status]||"❓";
     const color=STAT_COLORS[c.status]||"#8899bb";
     const name=c.name?`<span class="call-name">${{c.name}}</span>`:'';
-    const err=c.error?`<span style="color:var(--red);font-size:.72rem"> (${{c.error}})</span>`:'';
+    const err=c.error?`<span style="color:var(--red);font-size:.71rem"> (${{c.error}})</span>`:'';
     return `<div class="call-row"><span>${{icon}}</span><span class="call-num">${{c.number}}</span>${{name}}<span class="call-stat" style="color:${{color}}">${{c.status}}</span>${{err}}</div>`;
   }}).join("");
-  el.innerHTML=`<div class="run-meta"><span>${{s.run_time}} ${{badge}}</span><span class="run-counts">${{connected}}/${{(s.calls||[]).length}} connected</span></div>${{rows}}`;
+  el.innerHTML=`<div class="run-meta"><span style="color:var(--text2)">${{s.run_time}} ${{badge}}</span><span class="run-counts">${{connected}}/${{calls.length}} connected</span></div>${{rows}}`;
 }}
 
 // ── Members ─────────────────────────────────────────────────────────────────
@@ -1328,22 +1463,22 @@ function renderMembers(members){{
     const srcTag=m.source==="sheet"?`<span class="tag tag-sheet">Sheet</span>`:'';
     const pauseTag=m.paused?`<span class="tag tag-paused">Paused</span>`:'';
     const disp=m.name||`<span style="color:var(--text3);font-size:.73rem">No name</span>`;
-    return `<div class="num-row${{m.paused?' paused':''}}">
+    return `<div class="num-row${{m.paused?' paused':''}}" >
       <div class="num-main">
         <div style="display:flex;align-items:center">${{srcTag}}${{pauseTag}}<span class="num-phone" style="margin-left:.2rem">${{m.number}}</span></div>
         <div class="num-name-disp">${{disp}}</div>
       </div>
       <div class="num-actions">
         <input class="name-inp" type="text" value="${{m.name}}" placeholder="Name" id="nm-${{m.number}}"/>
-        <button class="btn btn-save" onclick="saveName('${{m.number}}')">Save</button>
+        <button class="btn btn-save" onclick="saveName('${{m.number}}')" >Save</button>
         <button class="btn ${{m.paused?'btn-resume':'btn-pause'}}" onclick="togglePause('${{m.number}}',${{m.paused}})">${{m.paused?'Resume':'Pause'}}</button>
         <button class="btn btn-rm" onclick="removeMember('${{m.number}}')">✕</button>
       </div>
     </div>`;
   }}
   let html='';
-  if(active.length) html+=`<div class="sec-label" style="color:var(--green)">✅ Will be called (${{active.length}})</div>`+active.map(row).join('');
-  if(paused.length) html+=`<div class="sec-label" style="color:var(--orange);margin-top:.4rem">⏸ Paused — skipped (${{paused.length}})</div>`+paused.map(row).join('');
+  if(active.length)html+=`<div class="sec-label" style="color:var(--green)">✅ Will be called (${{active.length}})</div>`+active.map(row).join('');
+  if(paused.length)html+=`<div class="sec-label" style="color:var(--orange);margin-top:.4rem">⏸ Paused — skipped (${{paused.length}})</div>`+paused.map(row).join('');
   el.innerHTML=html;
 }}
 
@@ -1368,44 +1503,26 @@ function updSpin(day){{
     if(el)el.className="ampm-opt"+(s.ap===v?" sel":"");
   }});
 }}
-
-function setHDirect(day, val){{
-  let h = parseInt(val);
-  if(isNaN(h)) return;
-  h = Math.max(1, Math.min(12, h));
-  SS[day].h = h;
-  updSpin(day);
-}}
-
-function setMDirect(day, val){{
-  let m = parseInt(val);
-  if(isNaN(m)) return;
-  m = Math.max(0, Math.min(59, m));
-  SS[day].m = m;
-  updSpin(day);
-}}
 function spinH(day,d){{SS[day].h=(SS[day].h-1+d+12)%12+1;updSpin(day);}}
 function spinM(day,d){{SS[day].m=((SS[day].m+d)+60)%60;updSpin(day);}}
 function setAP(day,v){{SS[day].ap=v;updSpin(day);}}
+function setHDirect(day,val){{let h=parseInt(val);if(isNaN(h))return;SS[day].h=Math.max(1,Math.min(12,h));updSpin(day);}}
+function setMDirect(day,val){{let m=parseInt(val);if(isNaN(m))return;SS[day].m=Math.max(0,Math.min(59,m));updSpin(day);}}
 function spinnerHTML(day){{
   const s=SS[day];
   return `<div class="spin-wrap">
     <button class="spin-btn" onclick="spinH(${{day}},1)">▲</button>
-    <input class="spin-val" type="number" id="sh-${{day}}" value="${{String(s.h).padStart(2,'00')}}"
-      min="1" max="12" onchange="setHDirect(${{day}},this.value)" onclick="this.select()"/>
-    <button class="spin-btn" onclick="spinH(${{day}},-1)">▼</button>
-  </div>
-  <span class="sep">:</span>
-  <div class="spin-wrap">
+    <input class="spin-val" type="number" id="sh-${{day}}" value="${{String(s.h).padStart(2,'00')}}" min="1" max="12" onchange="setHDirect(${{day}},this.value)" onclick="this.select()"/>
+    <button class="spin-btn" onclick="spinH(${{day}},-1)">▼</button></div>
+    <span class="sep">:</span>
+    <div class="spin-wrap">
     <button class="spin-btn" onclick="spinM(${{day}},1)">▲</button>
-    <input class="spin-val" type="number" id="sm-${{day}}" value="${{String(s.m).padStart(2,'00')}}"
-      min="0" max="59" onchange="setMDirect(${{day}},this.value)" onclick="this.select()"/>
-    <button class="spin-btn" onclick="spinM(${{day}},-1)">▼</button>
-  </div>
-  <div class="ampm-grp">
-    <button class="ampm-opt${{s.ap==="AM"?" sel":""}}" id="ap-${{day}}-AM" onclick="setAP(${{day}},'AM')">AM</button>
-    <button class="ampm-opt${{s.ap==="PM"?" sel":""}}" id="ap-${{day}}-PM" onclick="setAP(${{day}},'PM')">PM</button>
-  </div>`;
+    <input class="spin-val" type="number" id="sm-${{day}}" value="${{String(s.m).padStart(2,'00')}}" min="0" max="59" onchange="setMDirect(${{day}},this.value)" onclick="this.select()"/>
+    <button class="spin-btn" onclick="spinM(${{day}},-1)">▼</button></div>
+    <div class="ampm-grp">
+      <button class="ampm-opt${{s.ap==='AM'?' sel':''}}" id="ap-${{day}}-AM" onclick="setAP(${{day}},'AM')">AM</button>
+      <button class="ampm-opt${{s.ap==='PM'?' sel':''}}" id="ap-${{day}}-PM" onclick="setAP(${{day}},'PM')">PM</button>
+    </div>`;
 }}
 function renderSchedule(schedule){{
   const grid=document.getElementById("day-grid");
@@ -1438,33 +1555,19 @@ function renderRec(s){{
   }}else{{
     info='<div class="rec-info" style="color:var(--text3)">No recording yet.</div>';
   }}
-  el.innerHTML=`<div class="toggle-row">
-    <button class="toggle-btn ${{recOn?'ton':'toff'}}" onclick="toggleSetting('record_enabled')">${{recOn?'Record: On':'Record: Off'}}</button>
-    <span class="thint">${{recOn?'Conference will be recorded.':'Enable to record.'}}</span>
-  </div>
-  <div class="toggle-row">
-    <button class="toggle-btn ${{repOn?'ton':'toff'}}" onclick="toggleSetting('replay_enabled')">${{repOn?'Replay for Late Callers: On':'Replay: Off'}}</button>
-    <span class="thint">${{repOn?'Late callers hear the last recording if conference is over.':'Enable for replay.'}}</span>
-  </div>
+  el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{recOn?'ton':'toff'}}" onclick="toggleSetting('record_enabled')">${{recOn?'Record: On':'Record: Off'}}</button><span class="thint">${{recOn?'Conference will be recorded.':'Enable to record.'}}</span></div>
+  <div class="toggle-row"><button class="toggle-btn ${{repOn?'ton':'toff'}}" onclick="toggleSetting('replay_enabled')">${{repOn?'Replay: On':'Replay: Off'}}</button><span class="thint">${{repOn?'Late callers hear recording if conference is over.':'Enable for replay.'}}</span></div>
   ${{info}}${{dl}}`;
 }}
-
-// ── Announcements ─────────────────────────────────────────────────────────────
 function renderAnn(s){{
   const el=document.getElementById("ann-section");
   const on=s.announcements_enabled;
-  el.innerHTML=`<div class="toggle-row">
-    <button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('announcements_enabled')">${{on?'Announcements: On':'Announcements: Off'}}</button>
-    <span class="thint">${{on?"Plays who joined after everyone answers or doesn't answer.":'Enable join announcements.'}}</span>
-  </div>`;
+  el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('announcements_enabled')">${{on?'Announcements: On':'Announcements: Off'}}</button><span class="thint">${{on?'Plays who joined after all calls settle.':'Enable join announcements.'}}</span></div>`;
 }}
-
-// ── Sheets ────────────────────────────────────────────────────────────────────
 function renderSheets(msg,ok){{
   const el=document.getElementById("sheets-section");
-  const msgHtml=msg?`<span style="color:${{ok?'var(--green)':'var(--red)'}};font-size:.77rem;margin-left:.5rem">${{msg}}</span>`:'';
-  el.innerHTML=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:.5rem">
-    <button class="btn-sync" onclick="sheetsSync()">↺ Re-sync from Sheet</button>${{msgHtml}}</div>`;
+  const msgHtml=msg?`<span style="color:${{ok?'var(--green)':'var(--red)'}}; font-size:.76rem;margin-left:.5rem">${{msg}}</span>`:'';
+  el.innerHTML=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:.5rem"><button class="btn-sync" onclick="sheetsSync()">↺ Re-sync from Sheet</button>${{msgHtml}}</div>`;
 }}
 
 // ── Hangup ────────────────────────────────────────────────────────────────────
@@ -1478,25 +1581,20 @@ async function renderHangup(){{
   let html=`<div class="hup-all-row">
     <button class="btn-hup-all" onclick="hupAll(false)">🔴 Hang Up All (${{calls.length}})</button>
     <button class="btn-hup-blk" onclick="hupAll(true)">🚫 Hang Up + Block All</button>
-  </div>
-  <p style="font-size:.72rem;color:var(--text3);margin-bottom:.45rem">${{conn}} connected · ${{ring}} ringing</p>`;
+  </div><p style="font-size:.71rem;color:var(--text3);margin-bottom:.45rem">${{conn}} connected · ${{ring}} ringing</p>`;
   html+=calls.map(c=>{{
     const color=c.status==="connected"?"var(--green)":"var(--yellow)";
     return `<div class="live-row">
       <div><span style="font-weight:600">${{c.number}}</span>
-        ${{c.name?`<span style="color:var(--text2);font-size:.76rem"> — ${{c.name}}</span>`:''}}
-        <span style="color:${{color}};font-size:.7rem;margin-left:.3rem">● ${{c.status==="connected"?"Connected":"Ringing"}}</span>
-        ${{c.blocked?'<span style="color:var(--orange);font-size:.7rem"> · Blocked</span>':''}}
-      </div>
+      ${{c.name?`<span style="color:var(--text2);font-size:.76rem"> — ${{c.name}}</span>`:''}}<span style="color:${{color}};font-size:.7rem;margin-left:.3rem">● ${{c.status==="connected"?"Connected":"Ringing"}}</span>
+      ${{c.blocked?'<span style="color:var(--orange);font-size:.7rem"> · Blocked</span>':''}}</div>
       <div class="live-acts">
         <button class="btn-hup" onclick="hupOne('${{c.uuid}}',false)">Hang Up</button>
         <button class="btn-hup-b" onclick="hupOne('${{c.uuid}}',true)">+ Block</button>
-      </div>
-    </div>`;
+      </div></div>`;
   }}).join("");
   ctl.innerHTML=html;
 }}
-
 async function hupAll(block){{
   if(!confirm(block?"Hang up all and block from calling back?":"Hang up all?"))return;
   const r=await api("/hangup/all",{{block}});
@@ -1515,46 +1613,12 @@ async function triggerConference(){{
   const btn=document.getElementById("trigger-btn");
   btn.disabled=true;btn.innerHTML='<span class="live-dot"></span>Starting…';
   const r=await api("/trigger");
-  if(!r.ok){{toast("Already running — use Stop if stuck");btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";}}
+  if(!r.ok){{toast("Already running — use Force Stop if stuck");btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";}}
   else{{toast("Conference started!");setTimeout(refresh,2000);}}
 }}
-
-let testNumCount = 1;
-
-function addTestNumber(){{
-  const container = document.getElementById("test-numbers");
-  const div = document.createElement("div");
-  div.className = "add-row";
-  div.style.marginBottom = ".4rem";
-  div.id = `test-row-${{testNumCount}}`;
-  div.innerHTML = `<input class="add-inp" type="tel" placeholder="Number e.g. 2025551234" id="test-num-${{testNumCount}}"/>
-    <button onclick="removeTestNumber(${{testNumCount}})" style="background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:.5rem .7rem;font-size:.8rem;cursor:pointer;font-family:Inter,sans-serif">✕</button>`;
-  container.appendChild(div);
-  testNumCount++;
-}}
-
-function removeTestNumber(idx){{
-  const row = document.getElementById(`test-row-${{idx}}`);
-  if(row) row.remove();
-}}
-
-async function runTest(){{
-  const numbers = [];
-  document.querySelectorAll('[id^="test-num-"]').forEach(inp=>{{
-    if(inp.value.trim()) numbers.push(inp.value.trim());
-  }});
-  if(!numbers.length){{ toast("Enter at least one number"); return; }}
-  if(!confirm(`Run test conference with: ${{numbers.join(", ")}}?\n\nReal members will NOT be called.`)) return;
-  const r = await api("/trigger/test", {{numbers}});
-  if(r.ok) {{ toast("Test conference started!"); setTimeout(refresh, 2000); }}
-  else toast("Error: " + (r.error || "failed"));
-}}
-
 async function stopConference(){{
-  if(!confirm("Force-stop the conference? This only resets the status display — it does not hang up active calls."))return;
-  await api("/trigger/stop");
-  toast("Stopped");
-  refresh();
+  if(!confirm("Force-stop? This resets the display but does not hang up active calls."))return;
+  await api("/trigger/stop");toast("Stopped");refresh();
 }}
 async function addNumber(){{
   const num=document.getElementById("new-num").value.trim();
@@ -1578,25 +1642,40 @@ async function sheetsSync(){{
   toast(r.ok?"Synced!":"Sync failed");
 }}
 
+// ── Test Mode ─────────────────────────────────────────────────────────────────
+let testNumCount=1;
+function addTestNumber(){{
+  const container=document.getElementById("test-numbers");
+  const inp=document.createElement("input");
+  inp.className="admin-inp";inp.type="tel";
+  inp.placeholder="Number e.g. 2025551234";
+  inp.id=`test-num-${{testNumCount++}}`;
+  container.appendChild(inp);
+}}
+async function runTest(){{
+  const numbers=[];
+  document.querySelectorAll('[id^="test-num-"]').forEach(inp=>{{if(inp.value.trim())numbers.push(inp.value.trim());}});
+  if(!numbers.length){{toast("Enter at least one number");return;}}
+  if(!confirm(`Run test with: ${{numbers.join(", ")}}?\n\nReal members will NOT be called.`))return;
+  const r=await api("/trigger/test",{{numbers}});
+  if(r.ok){{toast("Test conference started!");setTimeout(refresh,2000);}}
+  else toast("Error: "+(r.error||"failed"));
+}}
+
 // ── Refresh ───────────────────────────────────────────────────────────────────
 async function refresh(){{
   try{{
     const s=await fetch("/api/state",{{credentials:"include"}}).then(r=>r.json());
-    renderLastRun(s);
-    renderMembers(s.members||[]);
-    renderSchedule(s.schedule||[]);
-    renderRec(s);
-    renderAnn(s);
-    renderSheets("",true);
-    renderHangup();
+    renderLastRun(s);renderMembers(s.members||[]);renderSchedule(s.schedule||[]);
+    renderRec(s);renderAnn(s);renderSheets("",true);renderHangup();
   }}catch(e){{console.error("Refresh error",e);}}
 }}
-
 refresh();
 setInterval(()=>{{const b=document.getElementById("trigger-btn");if(b&&b.disabled)refresh();}},8000);
 if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{{}});
 </script>
 </body></html>"""
+
 
 # ── PWA ───────────────────────────────────────────────────────────────────────
 
