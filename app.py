@@ -1520,18 +1520,9 @@ def status():
     <div style='border-top:1px solid var(--b1);padding-top:16px;margin-bottom:16px'>
       <div class='section-title'>Quick Actions</div>
       <div style='display:flex;flex-direction:column;gap:6px'>
-        <button class='btn btn-ghost btn-full' onclick='showSection("members")' style='justify-content:flex-start;gap:8px'>
-          <svg width='14' height='14' viewBox='0 0 16 16' fill='currentColor'><path d='M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5 5s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3z'/></svg>
-          Manage Members
-        </button>
-        <button class='btn btn-ghost btn-full' onclick='showSection("schedule")' style='justify-content:flex-start;gap:8px'>
-          <svg width='14' height='14' viewBox='0 0 16 16' fill='currentColor'><path d='M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5z'/></svg>
-          Edit Schedule
-        </button>
-        <button class='btn btn-ghost btn-full' onclick='showSection("test")' style='justify-content:flex-start;gap:8px'>
-          <svg width='14' height='14' viewBox='0 0 16 16' fill='currentColor'><path d='M14 1H2a1 1 0 0 0-1 1v2h14V2a1 1 0 0 0-1-1zM1 5v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5H1z'/></svg>
-          Run Test
-        </button>
+        <a href='#' onclick='event.preventDefault();showSection("members")' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px;text-decoration:none'>Manage Members</a>
+        <a href='#' onclick='event.preventDefault();showSection("schedule")' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px;text-decoration:none'>Edit Schedule</a>
+        <a href='#' onclick='event.preventDefault();showSection("test")' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px;text-decoration:none'>Run Test</a>
         <a href='/history' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px'>
           <svg width='14' height='14' viewBox='0 0 16 16' fill='currentColor'><path d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm1 7.5H7V4h2v3.5H11V9H9z'/></svg>
           Call History
@@ -1577,16 +1568,19 @@ async function api(url,data){{
 
 // ── Section navigation ────────────────────────────────────────────────────
 function showSection(name){{
-  ["dashboard","members","schedule","settings","test"].forEach(s=>{{
-    const el = document.getElementById("sec-"+s);
-    if(el) el.style.display = s===name?"block":"none";
-  }});
-  document.querySelectorAll(".sidebar-item").forEach(el=>el.classList.remove("active"));
-  document.querySelectorAll(".sidebar-item").forEach(el=>{{
-    if(el.getAttribute("onclick") && el.getAttribute("onclick").includes(name))
-      el.classList.add("active");
-  }});
+  var secs=["dashboard","members","schedule","settings","test"];
+  for(var i=0;i<secs.length;i++){{
+    var s=secs[i];
+    var el=document.getElementById("sec-"+s);
+    if(el)el.style.display=(s===name)?"block":"none";
+    var nav=document.getElementById("nav-"+s);
+    if(nav){{
+      if(s===name)nav.classList.add("active");
+      else nav.classList.remove("active");
+    }}
+  }}
 }}
+
 
 // ── Last Run ──────────────────────────────────────────────────────────────
 function renderLastRun(s){{
