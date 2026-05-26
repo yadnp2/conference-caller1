@@ -1039,12 +1039,12 @@ def status():
   <link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap' rel='stylesheet'/>
   <style>
     :root{{
-      --bg:#0d1117;--s1:#161b22;--s2:#1c2128;--s3:#21262d;
-      --b1:#30363d;--b2:#3d444d;--b3:#484f58;
-      --t1:#e6edf3;--t2:#8b949e;--t3:#6e7681;
-      --blue:#388bfd;--blue-dim:#1f6feb;--blue-glow:rgba(56,139,253,.15);
-      --green:#3fb950;--green-dim:#238636;
-      --orange:#f0883e;--red:#f85149;--purple:#d2a8ff;--yellow:#e3b341;
+      --bg:#f9f9f8;--s1:#ffffff;--s2:#f5f5f3;--s3:#ededeb;
+      --b1:#e8e8e5;--b2:#d5d5d0;--b3:#c0c0ba;
+      --t1:#1a1a18;--t2:#6b6b66;--t3:#9b9b96;
+      --blue:#2563eb;--blue-dim:#1d4ed8;--blue-glow:rgba(37,99,235,.1);
+      --green:#16a34a;--green-dim:#15803d;
+      --orange:#ea580c;--red:#dc2626;--purple:#7c3aed;--yellow:#d97706;
       --r:6px;--r2:8px;--r3:12px;
     }}
     *{{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}}
@@ -1075,9 +1075,9 @@ def status():
 
     /* LAYOUT */
     .layout{{display:grid;grid-template-columns:240px 1fr 280px;gap:0;height:calc(100vh - 56px);overflow:hidden}}
-    .sidebar{{background:var(--s1);border-right:1px solid var(--b1);overflow-y:auto;padding:16px 0}}
+    .sidebar{{background:var(--s2);border-right:1px solid var(--b1);overflow-y:auto;padding:16px 0}}
     .main{{overflow-y:auto;padding:24px}}
-    .rightbar{{background:var(--s1);border-left:1px solid var(--b1);overflow-y:auto;padding:16px}}
+    .rightbar{{background:var(--s2);border-left:1px solid var(--b1);overflow-y:auto;padding:16px}}
     @media(max-width:1100px){{
       .layout{{grid-template-columns:200px 1fr}}
       .rightbar{{display:none}}
@@ -1096,12 +1096,12 @@ def status():
                    color:var(--t2);cursor:pointer;border-radius:0;transition:all .12s;
                    border:none;background:none;width:100%;text-align:left;font-family:inherit}}
     .sidebar-item:hover{{color:var(--t1);background:var(--s2)}}
-    .sidebar-item.active{{color:var(--t1);background:rgba(56,139,253,.1);
+    .sidebar-item.active{{color:var(--blue);background:rgba(37,99,235,.06);
                           border-right:2px solid var(--blue)}}
     .sidebar-item svg{{width:15px;height:15px;flex-shrink:0;opacity:.7}}
     .sidebar-item.active svg{{opacity:1;color:var(--blue)}}
     .sidebar-badge{{margin-left:auto;font-size:10px;font-weight:600;padding:1px 6px;
-                    border-radius:10px;background:var(--s3);color:var(--t2)}}
+                    border-radius:10px;background:var(--s3);color:var(--t2);border:1px solid var(--b1)}}
     .sidebar-badge.live{{background:rgba(63,185,80,.15);color:var(--green)}}
 
     /* STATUS BAR */
@@ -1139,8 +1139,8 @@ def status():
     .btn-success:hover{{background:#2da843}}
     .btn-danger{{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.2)}}
     .btn-danger:hover{{background:rgba(248,81,73,.2)}}
-    .btn-secondary{{background:var(--s3);color:var(--t1);border:1px solid var(--b2)}}
-    .btn-secondary:hover{{background:var(--b1);border-color:var(--b3)}}
+    .btn-secondary{{background:var(--s1);color:var(--t1);border:1px solid var(--b1)}}
+    .btn-secondary:hover{{background:var(--s3);border-color:var(--b2)}}
     .btn-ghost{{background:none;color:var(--t2);border:1px solid var(--b1)}}
     .btn-ghost:hover{{background:var(--s3);color:var(--t1)}}
     .btn-full{{width:100%;justify-content:center;padding:10px 14px;font-size:14px}}
@@ -1162,7 +1162,7 @@ def status():
 
     /* METRICS */
     .metric-grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}
-    .metric{{background:var(--s2);border:1px solid var(--b1);border-radius:var(--r2);
+    .metric{{background:var(--s3);border:1px solid var(--b1);border-radius:var(--r2);
              padding:12px 14px}}
     .metric-val{{font-size:22px;font-weight:700;line-height:1}}
     .metric-lbl{{font-size:11px;color:var(--t3);margin-top:3px;text-transform:uppercase;
@@ -1172,7 +1172,7 @@ def status():
 
     /* CALL LIST */
     .call-item{{display:flex;align-items:center;gap:10px;padding:8px 12px;
-                background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);
+                background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);
                 margin-bottom:6px;font-size:13px}}
     .call-status-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0}}
     .call-num{{font-weight:500;flex:1}}
@@ -1189,9 +1189,9 @@ def status():
     .member-item{{display:flex;align-items:center;gap:10px;padding:8px 0;
                   border-bottom:1px solid var(--b1)}}
     .member-item:last-child{{border-bottom:none}}
-    .member-avatar{{width:28px;height:28px;border-radius:50%;background:var(--s3);
+    .member-avatar{{width:28px;height:28px;border-radius:50%;background:var(--blue-glow);
                     border:1px solid var(--b2);display:flex;align-items:center;
-                    justify-content:center;font-size:11px;font-weight:600;color:var(--t2);
+                    justify-content:center;font-size:11px;font-weight:600;color:var(--blue);
                     flex-shrink:0;text-transform:uppercase}}
     .member-info{{flex:1;min-width:0}}
     .member-name{{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
@@ -1205,14 +1205,14 @@ def status():
                padding:4px 7px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .12s}}
     .icon-btn:hover{{background:var(--s3);color:var(--t1);border-color:var(--b2)}}
     .icon-btn.danger:hover{{background:rgba(248,81,73,.1);color:var(--red);border-color:rgba(248,81,73,.3)}}
-    .name-field{{background:var(--s2);border:1px solid var(--b1);color:var(--t1);
+    .name-field{{background:var(--s1);border:1px solid var(--b1);color:var(--t1);
                  border-radius:5px;padding:4px 8px;font-size:12px;font-family:inherit;width:90px}}
     .name-field:focus{{outline:none;border-color:var(--blue)}}
     .member-item.paused{{opacity:.45}}
 
     /* ADD ROW */
     .add-row{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}}
-    .field{{flex:1;min-width:100px;background:var(--s2);border:1px solid var(--b1);
+    .field{{flex:1;min-width:100px;background:var(--s1);border:1px solid var(--b1);
             color:var(--t1);border-radius:var(--r2);padding:7px 12px;font-size:13px;
             font-family:inherit}}
     .field:focus{{outline:none;border-color:var(--blue)}}
@@ -1229,13 +1229,13 @@ def status():
     .spin-btn{{background:none;border:none;color:var(--t3);font-size:9px;line-height:1;
                cursor:pointer;padding:1px 5px}}
     .spin-btn:hover{{color:var(--t1)}}
-    .spin-val{{background:var(--s2);border:1px solid var(--b1);color:var(--t1);
+    .spin-val{{background:var(--s1);border:1px solid var(--b1);color:var(--t1);
                border-radius:5px;padding:3px 0;font-size:13px;font-weight:600;
                text-align:center;width:34px;font-family:monospace;-moz-appearance:textfield}}
     .spin-val::-webkit-outer-spin-button,.spin-val::-webkit-inner-spin-button{{-webkit-appearance:none}}
     .spin-val:focus{{outline:none;border-color:var(--blue)}}
     .ampm-grp{{display:flex;border:1px solid var(--b1);border-radius:5px;overflow:hidden}}
-    .ampm-opt{{background:var(--s2);color:var(--t3);border:none;padding:3px 7px;
+    .ampm-opt{{background:var(--s1);color:var(--t3);border:none;padding:3px 7px;
                font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}}
     .ampm-opt.sel{{background:var(--blue-dim);color:#fff}}
     .sep{{color:var(--t3);font-weight:700;padding:0 2px;font-size:13px}}
@@ -1248,7 +1248,7 @@ def status():
     .toggle-sub{{font-size:11px;color:var(--t3);margin-top:2px}}
     .toggle{{position:relative;width:36px;height:20px;flex-shrink:0}}
     .toggle input{{opacity:0;width:0;height:0}}
-    .toggle-track{{position:absolute;inset:0;background:var(--s3);border:1px solid var(--b2);
+    .toggle-track{{position:absolute;inset:0;background:var(--b2);border:1px solid var(--b2);
                    border-radius:10px;cursor:pointer;transition:all .2s}}
     .toggle input:checked+.toggle-track{{background:var(--green-dim);border-color:var(--green-dim)}}
     .toggle-track::after{{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;
@@ -1257,17 +1257,17 @@ def status():
 
     /* HANGUP */
     .live-call-row{{display:flex;align-items:center;gap:8px;padding:8px 12px;
-                    background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);
+                    background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);
                     margin-bottom:6px;font-size:13px}}
     .hup-actions{{display:flex;gap:5px;margin-left:auto}}
 
     /* DIALIN */
-    .dialin-card{{background:linear-gradient(135deg,rgba(31,111,235,.08),rgba(56,139,253,.04));
+    .dialin-card{{background:linear-gradient(135deg,rgba(37,99,235,.06),rgba(37,99,235,.02));
                   border:1px solid rgba(56,139,253,.2);border-radius:var(--r2);padding:14px 16px}}
     .dialin-num{{font-size:20px;font-weight:700;letter-spacing:.08em;color:var(--t1);margin-top:4px}}
 
     /* RECORDING */
-    .rec-file{{background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);
+    .rec-file{{background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);
                padding:10px 12px;font-size:12px;color:var(--t2);margin-top:10px;
                display:flex;align-items:center;justify-content:space-between}}
 
@@ -1303,8 +1303,8 @@ def status():
     .admin-btn-run:hover{{background:rgba(63,185,80,.15);border-color:rgba(63,185,80,.4)}}
 
     /* TOAST */
-    .toast{{position:fixed;bottom:24px;right:24px;background:var(--s2);
-            border:1px solid var(--b2);color:var(--t1);padding:10px 16px;
+    .toast{{position:fixed;bottom:24px;right:24px;background:var(--t1);
+            border:1px solid var(--t1);color:var(--bg);padding:10px 16px;
             border-radius:var(--r2);font-size:13px;opacity:0;transition:all .25s;
             pointer-events:none;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.4)}}
     .toast.show{{opacity:1}}
