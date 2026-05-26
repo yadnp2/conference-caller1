@@ -484,8 +484,9 @@ def answer():
 
     # If conference is over and recording exists, play recording
     if not conf_active and get_setting("replay_enabled") == "true":
-        if os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3")):
-            meta = get_latest_recording_meta()
+        meta = get_latest_recording_meta()
+        has_recording = bool(meta.get("url")) or os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
+        if has_recording:
             return jsonify([
                 {"action": "talk", "text": f"The conference has ended. Playing the recording from {meta.get('date','the last session')}."},
                 {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/audio"], "level": 0},
@@ -551,8 +552,11 @@ def event():
                 threading.Thread(target=update_log, args=(log_id,"voicemail"), daemon=True).start()
             elif status in ("completed","busy","failed","rejected","unanswered","timeout","cancelled"):
                 if entry["status"] == "connected":
+                    entry["status"] = status
                     still = any(e.get("status")=="connected" and u!=uuid for u,e in call_map.items())
                     last_run["conference_active"] = still
+                    print(f"[event] {uuid} completed, conference_active={still}", flush=True)
+                    threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
                 else:
                     entry["status"] = status
                     if prev not in FINAL:
@@ -563,22 +567,46 @@ def event():
 @app.route("/recording", methods=["GET","POST"])
 def recording_webhook():
     data = request.get_json(silent=True) or {}
+    if not data:
+        data = request.values.to_dict()
     url  = data.get("recording_url") or data.get("url")
     if url:
         date_str = datetime.now(EASTERN).strftime("%A %B %-d at %-I:%M %p ET")
+        size = int(data.get("size", 0))
+        # Save meta immediately so URL is available for streaming
+        save_recording_meta(url, date_str, size)
+        print(f"[recording] saved meta url={url[:60]}... size={size}", flush=True)
+        # Also try to download to disk as backup
         def _dl():
             ok = download_recording(url)
-            if ok:
-                save_recording_meta(url, date_str, int(data.get("size",0)))
+            print(f"[recording] download {'OK' if ok else 'FAILED'}", flush=True)
         threading.Thread(target=_dl, daemon=True).start()
     return "OK", 200
 
 @app.route("/recordings/audio")
 def recording_audio():
+    # Try disk first
     path = os.path.join(RECORDINGS_DIR, "latest.mp3")
-    if not os.path.exists(path):
-        return "No recording", 404
-    return send_from_directory(RECORDINGS_DIR, "latest.mp3", mimetype="audio/mpeg")
+    if os.path.exists(path) and os.path.getsize(path) > 1000:
+        return send_from_directory(RECORDINGS_DIR, "latest.mp3", mimetype="audio/mpeg")
+    # Fallback: stream from Vonage URL using JWT auth
+    try:
+        meta = get_latest_recording_meta()
+        rec_url = meta.get("url","")
+        if rec_url:
+            import jwt as pyjwt
+            now     = int(time.time())
+            payload = {"application_id": VONAGE_APP_ID, "iat": now,
+                       "jti": str(_uuid.uuid4()), "exp": now+300}
+            key   = _private_key.encode() if isinstance(_private_key, str) else _private_key
+            token = pyjwt.encode(payload, key, algorithm="RS256")
+            resp  = requests.get(rec_url, headers={"Authorization": f"Bearer {token}"}, timeout=30, stream=True)
+            if resp.status_code == 200:
+                from flask import Response as _Resp
+                return _Resp(resp.iter_content(chunk_size=8192), mimetype="audio/mpeg")
+    except Exception as e:
+        print(f"[recording audio] stream error: {e}", flush=True)
+    return "No recording available", 404
 
 # ── HANGUP ────────────────────────────────────────────────────────────────────
 
@@ -770,7 +798,8 @@ def api_state():
         calls    = list(last_run["calls"])
         running  = last_run["running"]
     rec_meta   = get_latest_recording_meta()
-    rec_exists = os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
+    # Recording exists if we have a URL in DB (even if disk file was wiped)
+    rec_exists = bool(rec_meta.get("url")) or os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
     return jsonify({
         "running":               running,
         "run_time":              run_time,
