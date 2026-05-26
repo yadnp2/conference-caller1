@@ -68,6 +68,13 @@ def init_db():
                     size_bytes INT DEFAULT 0,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
+                CREATE TABLE IF NOT EXISTS scheduler_log (
+                    day INT,
+                    hour INT,
+                    minute INT,
+                    fired_date DATE NOT NULL,
+                    PRIMARY KEY (day, hour, minute, fired_date)
+                );
             """)
             for key in ('record_enabled', 'replay_enabled', 'announcements_enabled'):
                 cur.execute("INSERT INTO settings (key,value) VALUES (%s,'true') ON CONFLICT DO NOTHING", (key,))
@@ -793,6 +800,64 @@ def trigger():
     threading.Thread(target=start_conference, daemon=True).start()
     return jsonify({"ok": True})
 
+@app.route("/trigger/test", methods=["POST"])
+@login_required
+def trigger_test():
+    """Run a test conference with specific numbers only — ignores the real member list."""
+    data    = request.json or {}
+    numbers = [_clean(n) for n in data.get("numbers", []) if _clean(n)]
+    if not numbers:
+        return jsonify({"ok": False, "error": "No valid numbers provided"}), 400
+    with lock:
+        if last_run["running"]:
+            return jsonify({"ok": False, "error": "Conference already running"}), 409
+
+    def run_test():
+        with lock:
+            last_run.update({
+                "running": True, "conference_active": False, "pending": 0,
+                "summary_fired": False,
+                "time": datetime.now(EASTERN).strftime("TEST — %A %b %d at %-I:%M %p %Z"),
+                "calls": []
+            })
+            call_map.clear()
+        session_blocked.clear()
+        with lock:
+            last_run["pending"] = len(numbers)
+        print(f"[test] Starting test conference with {numbers}", flush=True)
+        try:
+            for number in numbers:
+                name = get_name(number) or "Test"
+                try:
+                    resp = client.voice.create_call(CreateCallRequest(
+                        to=[ToPhone(number=number)],
+                        from_=Phone(number=FROM_NUMBER),
+                        answer_url=[f"{BASE_URL}/answer"],
+                        event_url=[f"{BASE_URL}/event"],
+                        machine_detection="hangup",
+                    ))
+                    uuid   = getattr(resp, "uuid", None)
+                    log_id = log_call(number, name, "dialing", uuid=uuid)
+                    entry  = {"number": number, "name": name, "status": "dialing",
+                              "uuid": uuid, "log_id": log_id}
+                    with lock:
+                        if uuid: call_map[uuid] = entry
+                        last_run["calls"].append(entry)
+                except Exception as e:
+                    log_call(number, name, "error", error=str(e))
+                    with lock:
+                        last_run["calls"].append({"number": number, "name": name,
+                                                   "status": "error", "error": str(e)})
+                time.sleep(2)
+        finally:
+            with lock:
+                last_run["running"] = False
+            if get_setting("announcements_enabled") == "true":
+                threading.Thread(target=_play_summary, daemon=True).start()
+
+    threading.Thread(target=run_test, daemon=True).start()
+    return jsonify({"ok": True})
+
 @app.route("/trigger/stop", methods=["POST"])
 @login_required
 def trigger_stop():
@@ -1125,6 +1190,24 @@ def status():
     <button id='stop-btn' onclick='stopConference()' style='display:none;width:100%;padding:.6rem;background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:var(--r);font-size:.85rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif'>⏹ Force Stop Conference</button>
   </div>
 
+  <!-- TEST MODE -->
+  <div class='card'>
+    <div class='card-hdr'>
+      <span class='card-title'>🧪 Test Mode</span>
+      <span style='font-size:.72rem;color:var(--text3)'>Real members will NOT be called</span>
+    </div>
+    <p style='font-size:.77rem;color:var(--text2);margin-bottom:.75rem'>Enter the number(s) you want to test with. Only these numbers will be dialed.</p>
+    <div id='test-numbers'>
+      <div class='add-row' style='margin-bottom:.4rem'>
+        <input class='add-inp' type='tel' placeholder='Number e.g. 2025551234' id='test-num-0'/>
+      </div>
+    </div>
+    <div style='display:flex;gap:.5rem;margin-top:.35rem;flex-wrap:wrap'>
+      <button onclick='addTestNumber()' style='background:var(--surface2);color:var(--text2);border:1px solid var(--border2);border-radius:var(--rs);padding:.45rem .9rem;font-size:.8rem;font-weight:600;cursor:pointer;font-family:Inter,sans-serif'>+ Add Number</button>
+      <button onclick='runTest()' style='background:linear-gradient(135deg,#854d0e,#a16207);color:#fef08a;border:none;border-radius:var(--rs);padding:.45rem 1.1rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;flex:1'>▶ Run Test Conference</button>
+    </div>
+  </div>
+
   <!-- HANGUP -->
   <div class='card'>
     <div class='card-hdr'><span class='card-title'>🔴 Active Call Controls</span></div>
@@ -1436,6 +1519,37 @@ async function triggerConference(){{
   else{{toast("Conference started!");setTimeout(refresh,2000);}}
 }}
 
+let testNumCount = 1;
+
+function addTestNumber(){{
+  const container = document.getElementById("test-numbers");
+  const div = document.createElement("div");
+  div.className = "add-row";
+  div.style.marginBottom = ".4rem";
+  div.id = `test-row-${{testNumCount}}`;
+  div.innerHTML = `<input class="add-inp" type="tel" placeholder="Number e.g. 2025551234" id="test-num-${{testNumCount}}"/>
+    <button onclick="removeTestNumber(${{testNumCount}})" style="background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:.5rem .7rem;font-size:.8rem;cursor:pointer;font-family:Inter,sans-serif">✕</button>`;
+  container.appendChild(div);
+  testNumCount++;
+}}
+
+function removeTestNumber(idx){{
+  const row = document.getElementById(`test-row-${{idx}}`);
+  if(row) row.remove();
+}}
+
+async function runTest(){{
+  const numbers = [];
+  document.querySelectorAll('[id^="test-num-"]').forEach(inp=>{{
+    if(inp.value.trim()) numbers.push(inp.value.trim());
+  }});
+  if(!numbers.length){{ toast("Enter at least one number"); return; }}
+  if(!confirm(`Run test conference with: ${{numbers.join(", ")}}?\n\nReal members will NOT be called.`)) return;
+  const r = await api("/trigger/test", {{numbers}});
+  if(r.ok) {{ toast("Test conference started!"); setTimeout(refresh, 2000); }}
+  else toast("Error: " + (r.error || "failed"));
+}}
+
 async function stopConference(){{
   if(!confirm("Force-stop the conference? This only resets the status display — it does not hang up active calls."))return;
   await api("/trigger/stop");
@@ -1500,25 +1614,51 @@ def sw():
 
 # ── SCHEDULER ─────────────────────────────────────────────────────────────────
 
+def _already_fired_today(day, hour, minute):
+    """Check DB if this schedule entry already fired today (survives restarts)."""
+    try:
+        today = datetime.now(EASTERN).date()
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM scheduler_log WHERE day=%s AND hour=%s AND minute=%s AND fired_date=%s",
+                    (day, hour, minute, today))
+                return cur.fetchone() is not None
+    except Exception as e:
+        print(f"[scheduler] DB check error: {e}", flush=True)
+        return False
+
+def _mark_fired_today(day, hour, minute):
+    """Record in DB that this schedule entry fired today."""
+    try:
+        today = datetime.now(EASTERN).date()
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO scheduler_log(day,hour,minute,fired_date) VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                    (day, hour, minute, today))
+            conn.commit()
+    except Exception as e:
+        print(f"[scheduler] DB mark error: {e}", flush=True)
+
 def run_scheduler():
     last_minute = None
-    fired_today = set()
-    last_date   = None
     while True:
-        now   = datetime.now(EASTERN)
-        today = now.date()
-        if last_date != today:
-            fired_today.clear()
-            last_date = today
+        now = datetime.now(EASTERN)
         key = (now.weekday(), now.hour, now.minute)
         if key != last_minute:
             last_minute = key
-            for e in load_schedule():
-                ekey = (e["day"], e["hour"], e["minute"])
-                if key == ekey and ekey not in fired_today:
-                    fired_today.add(ekey)
-                    threading.Thread(target=start_conference, daemon=True).start()
-                    break
+            with lock:
+                already_running = last_run.get("running", False)
+                still_active    = last_run.get("conference_active", False)
+            if not already_running and not still_active:
+                for e in load_schedule():
+                    ekey = (e["day"], e["hour"], e["minute"])
+                    if key == ekey and not _already_fired_today(*ekey):
+                        _mark_fired_today(*ekey)
+                        print(f"[scheduler] Firing conference for {ekey}", flush=True)
+                        threading.Thread(target=start_conference, daemon=True).start()
+                        break
         time.sleep(15)
 
 def _startup_sync():
