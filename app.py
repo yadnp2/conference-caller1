@@ -1578,11 +1578,14 @@ async function api(url,data){{
 // ── Section navigation ────────────────────────────────────────────────────
 function showSection(name){{
   ["dashboard","members","schedule","settings","test"].forEach(s=>{{
-    document.getElementById(`sec-${{s}}`).style.display = s===name?"block":"none";
+    const el = document.getElementById("sec-"+s);
+    if(el) el.style.display = s===name?"block":"none";
   }});
   document.querySelectorAll(".sidebar-item").forEach(el=>el.classList.remove("active"));
-  const active = document.querySelector(`[onclick*='showSection("${{name}}")']`);
-  if(active) active.classList.add("active");
+  document.querySelectorAll(".sidebar-item").forEach(el=>{{
+    if(el.getAttribute("onclick") && el.getAttribute("onclick").includes(name))
+      el.classList.add("active");
+  }});
 }}
 
 // ── Last Run ──────────────────────────────────────────────────────────────
