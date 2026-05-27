@@ -76,9 +76,11 @@ def init_db():
                     PRIMARY KEY (day, hour, minute, fired_date)
                 );
             """)
-            for key in ('record_enabled', 'replay_enabled', 'announcements_enabled', 'sponsor_enabled'):
-                cur.execute("INSERT INTO settings (key,value) VALUES (%s,'false') ON CONFLICT DO NOTHING", (key,))
-            cur.execute("INSERT INTO settings (key,value) VALUES ('sponsor_text','') ON CONFLICT DO NOTHING")
+            for key in ('record_enabled', 'replay_enabled', 'announcements_enabled'):
+                cur.execute("INSERT INTO settings (key,value) VALUES (%s,'true') ON CONFLICT DO NOTHING", (key,))
+            # sponsor_enabled defaults to false, sponsor_text defaults to empty
+            cur.execute("INSERT INTO settings (key,value) VALUES ('sponsor_enabled','false') ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO settings (key,value) VALUES ('sponsor_text','') ON CONFLICT (key) DO UPDATE SET value=COALESCE(NULLIF(settings.value,''),'')")
         conn.commit()
     print("DB initialized.")
 
@@ -383,7 +385,13 @@ def _play_summary():
     else:
         text = f"Welcome everyone. {', '.join(names[:-1])}, and {names[-1]} have joined."
 
-    print(f"Summary: {text}")
+    # Append sponsor message if enabled
+    if get_setting("sponsor_enabled") == "true":
+        sponsor = get_setting("sponsor_text", "").strip()
+        if sponsor:
+            text += f" {sponsor}"
+
+    print(f"Summary: {text}", flush=True)
     for u in uuids:
         try:
             client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US", style=2, level=1.0))
