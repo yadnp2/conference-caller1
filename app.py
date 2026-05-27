@@ -348,29 +348,46 @@ call_map        = {}   # uuid → {number, name, status, log_id}
 session_blocked = set()
 last_run        = {"time": None, "calls": [], "running": False,
                    "conference_active": False, "pending": 0, "summary_fired": False}
+last_answer_time = [0.0]  # timestamp of last /answer webhook for outbound call
 
 FINAL = {"connected","voicemail","completed","busy","cancelled","failed","rejected","unanswered","timeout","error"}
 
 # ── ANNOUNCEMENT ──────────────────────────────────────────────────────────────
 
 def _play_summary():
-    """Wait until all outbound calls settle, then announce who joined."""
-    MAX_WAIT = 120
-    waited   = 0
-    print(f"[summary] Starting — will wait up to {MAX_WAIT}s for calls to settle", flush=True)
+    """Wait until all outbound calls settle AND no new /answer calls for 3 seconds,
+    then announce who joined. This ensures everyone is actually in the conference room."""
+    MAX_WAIT   = 120
+    QUIET_SECS = 3    # seconds of no new joins before playing
+    waited     = 0
+    print(f"[summary] Starting — waiting for all calls to settle", flush=True)
+
+    # Phase 1: wait for all calls to settle (pending = 0 and not running)
     while waited < MAX_WAIT:
         time.sleep(1)
         waited += 1
         with lock:
-            still_dialing = last_run.get("running", False)
+            still_running = last_run.get("running", False)
             pending       = last_run.get("pending", 0)
-        if still_dialing or pending > 0:
+        if still_running or pending > 0:
             if waited % 10 == 0:
-                print(f"[summary] Still waiting — running={still_dialing} pending={pending} waited={waited}s", flush=True)
+                print(f"[summary] Waiting — running={still_running} pending={pending} waited={waited}s", flush=True)
             continue
         break
 
-    print(f"[summary] Settled after {waited}s", flush=True)
+    print(f"[summary] All calls settled after {waited}s — now waiting for quiet period", flush=True)
+
+    # Phase 2: wait until no new /answer calls for QUIET_SECS seconds
+    quiet_waited = 0
+    while quiet_waited < 30:  # max 30s extra wait
+        time.sleep(1)
+        quiet_waited += 1
+        elapsed_since_last_join = time.time() - last_answer_time[0]
+        if elapsed_since_last_join >= QUIET_SECS:
+            print(f"[summary] Quiet for {elapsed_since_last_join:.1f}s — playing announcement", flush=True)
+            break
+        else:
+            print(f"[summary] Someone joined {elapsed_since_last_join:.1f}s ago — waiting...", flush=True)
 
     with lock:
         if last_run.get("summary_fired"):
@@ -381,12 +398,10 @@ def _play_summary():
         names = [e["name"] for e in calls if e.get("status")=="connected" and e.get("name")]
         uuids = [u for u,e in call_map.items() if e.get("status")=="connected"]
 
-    print(f"[summary] calls={len(calls)} connected names={names} uuids={uuids}", flush=True)
-    for e in calls:
-        print(f"[summary]   call: number={e.get('number')} status={e.get('status')} name={e.get('name')}", flush=True)
+    print(f"[summary] Playing for {len(names)} connected: {names}", flush=True)
 
     if not names or not uuids:
-        print(f"[summary] No connected participants — names={names} uuids={uuids}", flush=True)
+        print(f"[summary] No connected participants — skipping", flush=True)
         return
 
     if len(names) == 1:
@@ -489,6 +504,9 @@ def answer():
     is_outbound = in_call_map or (clean_to and clean_to != vonage_num and is_approved_member(clean_to))
 
     if is_outbound:
+        # Record when this person actually entered the conference room
+        last_answer_time[0] = time.time()
+        print(f"[answer] outbound joined conference at {last_answer_time[0]:.1f}", flush=True)
         # Outbound call answered — just join the conference
         return jsonify([{"action": "talk", "style": 2, "text": "Please hold, joining you to the Shmiras HaLashon conference."}, *_conference_ncco()])
 
