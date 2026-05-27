@@ -377,7 +377,7 @@ def _speak_polly(text, uuids):
         resp = _polly.synthesize_speech(
             Text=text,
             OutputFormat="mp3",
-            VoiceId="Joanna",        # Neural US English female voice
+            VoiceId="Ruth",          # Best neural US English female voice
             Engine="neural",
         )
         mp3_path = os.path.join(RECORDINGS_DIR, "announcement.mp3")
@@ -520,6 +520,28 @@ def start_conference():
 
 # ── VONAGE WEBHOOKS ───────────────────────────────────────────────────────────
 
+def _polly_talk(text):
+    """Generate a Polly MP3 and return a stream NCCO action.
+    Falls back to Vonage talk action if Polly unavailable."""
+    if not _polly:
+        return {"action": "talk", "style": 2, "text": text}
+    try:
+        resp = _polly.synthesize_speech(
+            Text=text,
+            OutputFormat="mp3",
+            VoiceId="Ruth",
+            Engine="neural",
+        )
+        # Save with unique filename to avoid conflicts
+        fname = f"tts_{abs(hash(text))}.mp3"
+        fpath = os.path.join(RECORDINGS_DIR, fname)
+        with open(fpath, "wb") as f:
+            f.write(resp["AudioStream"].read())
+        return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 0}
+    except Exception as e:
+        print(f"[polly_talk] Error: {e} — falling back to Vonage TTS", flush=True)
+        return {"action": "talk", "style": 2, "text": text}
+
 def _conference_ncco():
     ncco = {
         "action":       "conversation",
@@ -565,20 +587,20 @@ def answer():
             if uuid in call_map:
                 last_run["pending"] = max(0, last_run["pending"] - 1)
         print(f"[answer] outbound entering conference, pending now={last_run.get('pending',0)}", flush=True)
-        return jsonify([{"action": "talk", "style": 2, "text": "Please hold, joining you to the Shmiras HaLashon conference."}, *_conference_ncco()])
+        return jsonify([_polly_talk("Please hold, joining you to the Shmiras HaLashon conference."), *_conference_ncco()])
 
     # Inbound call — check if member is approved
     from_raw = from_num  # already extracted above
     number   = clean_from
 
     if not number:
-        return jsonify([{"action": "talk", "style": 2, "text": "Sorry, calls with a hidden number cannot join. Goodbye."}])
+        return jsonify([_polly_talk("Sorry, calls with a hidden number cannot join. Goodbye.")])
 
     if not is_approved_member(number):
-        return jsonify([{"action": "talk", "style": 2, "text": "Sorry, your number is not registered for this conference. Goodbye."}])
+        return jsonify([_polly_talk("Sorry, your number is not registered for this conference. Goodbye.")])
 
     if number in session_blocked:
-        return jsonify([{"action": "talk", "style": 2, "text": "You cannot join this conference session. Goodbye."}])
+        return jsonify([_polly_talk("You cannot join this conference session. Goodbye.")])
 
     # Check if conference is still active
     with lock:
@@ -591,16 +613,16 @@ def answer():
         if has_recording:
             log_call(number, get_name(number), "heard-recording")
             return jsonify([
-                {"action": "talk", "style": 2, "text": f"The conference has ended. Playing the recording from {meta.get('date','the last session')}."},
+                _polly_talk(f"The conference has ended. Playing the recording from {meta.get('date','the last session')}."),
                 {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/audio"], "level": 0},
-                {"action": "talk", "style": 2, "text": "Recording complete. Goodbye."},
+                _polly_talk("Recording complete. Goodbye."),
             ])
 
     # Log as inbound-pending (will update to joined or missed in join-press)
     log_call(number, get_name(number), "inbound-pending")
     # Conference is active or no recording — join live
     return jsonify([
-        {"action": "talk", "style": 2, "text": "Press 1 to join the Shmiras HaLashon conference."},
+        _polly_talk("Press 1 to join the Shmiras HaLashon conference."),
         {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 6},
          "eventUrl": [f"{BASE_URL}/join-press"]},
     ])
@@ -635,7 +657,7 @@ def join_press():
     number   = _clean(from_raw)
     if number:
         log_call(number, get_name(number), "inbound-declined")
-    return jsonify([{"action": "talk", "style": 2, "text": "Goodbye."}])
+    return jsonify([_polly_talk("Goodbye.")])
 
 @app.route("/event", methods=["GET","POST"])
 def event():
@@ -725,6 +747,13 @@ def recording_announcement():
     if not os.path.exists(path):
         return "No announcement", 404
     return send_from_directory(RECORDINGS_DIR, "announcement.mp3", mimetype="audio/mpeg")
+
+@app.route("/recordings/tts/<fname>")
+def recording_tts(fname):
+    path = os.path.join(RECORDINGS_DIR, fname)
+    if not os.path.exists(path):
+        return "Not found", 404
+    return send_from_directory(RECORDINGS_DIR, fname, mimetype="audio/mpeg")
 
 @app.route("/recordings/audio")
 def recording_audio():
