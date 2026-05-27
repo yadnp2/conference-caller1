@@ -1033,652 +1033,280 @@ def status():
 <html lang='en'><head>
   <meta charset='UTF-8'/>
   <meta name='viewport' content='width=device-width,initial-scale=1'/>
-  <title>Shmiras HaLashon Conference</title>
+  <title>Conference Manager</title>
   <link rel='manifest' href='/manifest.json'/>
-  <meta name='theme-color' content='#0d1117'/>
-  <link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap' rel='stylesheet'/>
+  <meta name='theme-color' content='#0a0f1e'/>
+  <link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap' rel='stylesheet'/>
   <style>
-    :root{{
-      --bg:#f9f9f8;--s1:#ffffff;--s2:#f5f5f3;--s3:#ededeb;
-      --b1:#e8e8e5;--b2:#d5d5d0;--b3:#c0c0ba;
-      --t1:#1a1a18;--t2:#6b6b66;--t3:#9b9b96;
-      --blue:#2563eb;--blue-dim:#1d4ed8;--blue-glow:rgba(37,99,235,.1);
-      --green:#16a34a;--green-dim:#15803d;
-      --orange:#ea580c;--red:#dc2626;--purple:#7c3aed;--yellow:#d97706;
-      --r:6px;--r2:8px;--r3:12px;
-    }}
-    *{{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}}
-    body{{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t1);
-          font-size:14px;line-height:1.5;min-height:100vh}}
-    a{{color:var(--blue);text-decoration:none}}
-
-    /* NAV */
-    nav{{background:rgba(13,17,23,.95);border-bottom:1px solid var(--b1);
-         padding:0 24px;height:56px;display:flex;align-items:center;
-         justify-content:space-between;position:sticky;top:0;z-index:100;
-         backdrop-filter:blur(12px)}}
-    .nav-left{{display:flex;align-items:center;gap:12px}}
-    .nav-logo{{width:28px;height:28px;background:var(--blue-dim);border-radius:6px;
-               display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}}
-    .nav-title{{font-size:14px;font-weight:600;color:var(--t1)}}
-    .nav-sub{{font-size:12px;color:var(--t3);border-left:1px solid var(--b1);
-              margin-left:8px;padding-left:12px}}
-    .nav-right{{display:flex;align-items:center;gap:8px}}
-    .nav-link{{font-size:13px;color:var(--t2);padding:6px 10px;border-radius:var(--r);
-               cursor:pointer;background:none;border:none;font-family:inherit;
-               transition:color .15s,background .15s}}
-    .nav-link:hover{{color:var(--t1);background:var(--s3)}}
-    .nav-btn{{font-size:13px;font-weight:500;color:var(--t1);padding:5px 12px;
-              border-radius:var(--r);cursor:pointer;background:var(--s3);
-              border:1px solid var(--b2);font-family:inherit;transition:all .15s}}
-    .nav-btn:hover{{background:var(--s2);border-color:var(--b3)}}
-
-    /* LAYOUT */
-    .layout{{display:grid;grid-template-columns:240px 1fr 280px;gap:0;height:calc(100vh - 56px);overflow:hidden}}
-    .sidebar{{background:var(--s2);border-right:1px solid var(--b1);overflow-y:auto;padding:16px 0}}
-    .main{{overflow-y:auto;padding:24px}}
-    .rightbar{{background:var(--s2);border-left:1px solid var(--b1);overflow-y:auto;padding:16px}}
-    @media(max-width:1100px){{
-      .layout{{grid-template-columns:200px 1fr}}
-      .rightbar{{display:none}}
-    }}
-    @media(max-width:768px){{
-      .layout{{grid-template-columns:1fr;height:auto;overflow:visible}}
-      .sidebar{{border-right:none;border-bottom:1px solid var(--b1);padding:12px}}
-      .main{{padding:16px}}
-    }}
-
-    /* SIDEBAR */
-    .sidebar-section{{margin-bottom:4px}}
-    .sidebar-label{{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
-                    color:var(--t3);padding:8px 16px 4px}}
-    .sidebar-item{{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:13px;
-                   color:var(--t2);cursor:pointer;border-radius:0;transition:all .12s;
-                   border:none;background:none;width:100%;text-align:left;font-family:inherit}}
-    .sidebar-item:hover{{color:var(--t1);background:var(--s2)}}
-    .sidebar-item.active{{color:var(--blue);background:rgba(37,99,235,.06);
-                          border-right:2px solid var(--blue)}}
-    .sidebar-item svg{{width:15px;height:15px;flex-shrink:0;opacity:.7}}
-    .sidebar-item.active svg{{opacity:1;color:var(--blue)}}
-    .sidebar-badge{{margin-left:auto;font-size:10px;font-weight:600;padding:1px 6px;
-                    border-radius:10px;background:var(--s3);color:var(--t2);border:1px solid var(--b1)}}
-    .sidebar-badge.live{{background:rgba(63,185,80,.15);color:var(--green)}}
-
-    /* STATUS BAR */
-    .status-bar{{display:flex;align-items:center;gap:8px;padding:10px 16px;
-                 background:var(--s2);border-radius:var(--r2);border:1px solid var(--b1);
-                 margin-bottom:20px}}
-    .status-dot{{width:7px;height:7px;border-radius:50%;background:var(--t3);flex-shrink:0}}
-    .status-dot.live{{background:var(--green);box-shadow:0 0 6px rgba(63,185,80,.5)}}
+    :root{{--bg:#0a0f1e;--surface:#111827;--surface2:#1a2235;--border:#1f2d45;--border2:#2a3a55;
+          --text:#f0f4ff;--text2:#8899bb;--text3:#4a5f80;--blue:#3b82f6;--blue2:#1d4ed8;
+          --green:#22c55e;--orange:#f97316;--red:#ef4444;--purple:#a78bfa;--yellow:#fbbf24;
+          --r:12px;--rs:8px;--shadow:0 4px 24px rgba(0,0,0,.4)}}
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:4rem}}
+    .topbar{{background:var(--surface);border-bottom:1px solid var(--border);padding:.85rem 1.5rem;
+             display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}}
+    .brand{{display:flex;align-items:center;gap:.6rem}}
+    .brand-icon{{width:28px;height:28px;background:linear-gradient(135deg,#3b82f6,#6366f1);border-radius:8px;
+                 display:flex;align-items:center;justify-content:center;font-size:.9rem}}
+    .brand-name{{font-size:1rem;font-weight:700}}
+    .signout{{background:none;border:1px solid var(--border2);color:var(--text2);border-radius:var(--rs);
+              padding:.35rem .85rem;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}}
+    .signout:hover{{border-color:var(--blue);color:var(--text)}}
+    .page{{max-width:640px;margin:0 auto;padding:1.5rem 1rem;display:flex;flex-direction:column;gap:1.25rem}}
+    .card{{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem;box-shadow:var(--shadow)}}
+    .card-hdr{{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}}
+    .card-title{{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}}
+    .trigger-btn{{width:100%;padding:.95rem;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;
+                  border:none;border-radius:var(--r);font-size:1rem;font-weight:700;cursor:pointer;
+                  font-family:'Inter',sans-serif;box-shadow:0 4px 20px rgba(59,130,246,.3);transition:all .2s}}
+    .trigger-btn:hover:not([disabled]){{transform:translateY(-1px);box-shadow:0 6px 28px rgba(59,130,246,.45)}}
+    .trigger-btn[disabled]{{background:linear-gradient(135deg,#1e3a5f,#2a2f6e);color:var(--text3);cursor:not-allowed;box-shadow:none;transform:none}}
     @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.4}}}}
-    .status-dot.live{{animation:pulse 2s infinite}}
-    .status-text{{font-size:13px;color:var(--t2);flex:1}}
-    .status-meta{{font-size:12px;color:var(--t3)}}
-
-    /* PANELS */
-    .panel{{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r3);
-            margin-bottom:16px;overflow:hidden}}
-    .panel-header{{padding:14px 16px;border-bottom:1px solid var(--b1);
-                   display:flex;align-items:center;justify-content:space-between}}
-    .panel-title{{font-size:13px;font-weight:600;color:var(--t1);
-                  display:flex;align-items:center;gap:8px}}
-    .panel-title svg{{width:14px;height:14px;color:var(--t3)}}
-    .panel-action{{font-size:12px;color:var(--blue);cursor:pointer;background:none;border:none;
-                   font-family:inherit;padding:4px 8px;border-radius:var(--r);transition:background .12s}}
-    .panel-action:hover{{background:var(--blue-glow)}}
-    .panel-body{{padding:16px}}
-
-    /* BUTTONS */
-    .btn{{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r2);
-          font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:inherit;
-          transition:all .15s;white-space:nowrap}}
-    .btn-primary{{background:var(--blue-dim);color:#fff}}
-    .btn-primary:hover{{background:#1a7ff5}}
-    .btn-primary:disabled{{background:var(--s3);color:var(--t3);cursor:not-allowed}}
-    .btn-success{{background:var(--green-dim);color:#fff}}
-    .btn-success:hover{{background:#2da843}}
-    .btn-danger{{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.2)}}
-    .btn-danger:hover{{background:rgba(248,81,73,.2)}}
-    .btn-secondary{{background:var(--s1);color:var(--t1);border:1px solid var(--b1)}}
-    .btn-secondary:hover{{background:var(--s3);border-color:var(--b2)}}
-    .btn-ghost{{background:none;color:var(--t2);border:1px solid var(--b1)}}
-    .btn-ghost:hover{{background:var(--s3);color:var(--t1)}}
-    .btn-full{{width:100%;justify-content:center;padding:10px 14px;font-size:14px}}
-
-    /* LAUNCH BUTTON */
-    .launch-btn{{width:100%;padding:12px 20px;background:var(--blue-dim);color:#fff;
-                 border:none;border-radius:var(--r2);font-size:15px;font-weight:600;
-                 cursor:pointer;font-family:inherit;transition:all .2s;
-                 display:flex;align-items:center;justify-content:center;gap:8px}}
-    .launch-btn:hover:not(:disabled){{background:#1a7ff5;transform:translateY(-1px)}}
-    .launch-btn:disabled{{background:var(--s3);color:var(--t3);cursor:not-allowed;transform:none}}
-
-    /* STOP BTN */
-    #stop-btn{{display:none;width:100%;padding:8px;background:rgba(248,81,73,.08);
-               color:var(--red);border:1px solid rgba(248,81,73,.2);border-radius:var(--r2);
-               font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;
-               margin-top:8px;transition:background .15s}}
-    #stop-btn:hover{{background:rgba(248,81,73,.15)}}
-
-    /* METRICS */
-    .metric-grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}
-    .metric{{background:var(--s3);border:1px solid var(--b1);border-radius:var(--r2);
-             padding:12px 14px}}
-    .metric-val{{font-size:22px;font-weight:700;line-height:1}}
-    .metric-lbl{{font-size:11px;color:var(--t3);margin-top:3px;text-transform:uppercase;
-                 letter-spacing:.04em}}
-    .metric-val.green{{color:var(--green)}}
-    .metric-val.blue{{color:var(--blue)}}
-
-    /* CALL LIST */
-    .call-item{{display:flex;align-items:center;gap:10px;padding:8px 12px;
-                background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);
-                margin-bottom:6px;font-size:13px}}
-    .call-status-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0}}
-    .call-num{{font-weight:500;flex:1}}
-    .call-name{{color:var(--t2);font-size:12px}}
-    .call-badge{{font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px}}
-    .badge-connected{{background:rgba(63,185,80,.12);color:var(--green)}}
-    .badge-dialing{{background:rgba(227,179,65,.12);color:var(--yellow)}}
-    .badge-voicemail{{background:rgba(240,136,62,.12);color:var(--orange)}}
-    .badge-failed{{background:rgba(248,81,73,.12);color:var(--red)}}
-    .badge-inbound{{background:rgba(56,139,253,.12);color:var(--blue)}}
-    .badge-recording{{background:rgba(210,168,255,.12);color:var(--purple)}}
-
-    /* MEMBERS */
-    .member-item{{display:flex;align-items:center;gap:10px;padding:8px 0;
-                  border-bottom:1px solid var(--b1)}}
-    .member-item:last-child{{border-bottom:none}}
-    .member-avatar{{width:28px;height:28px;border-radius:50%;background:var(--blue-glow);
-                    border:1px solid var(--b2);display:flex;align-items:center;
-                    justify-content:center;font-size:11px;font-weight:600;color:var(--blue);
-                    flex-shrink:0;text-transform:uppercase}}
-    .member-info{{flex:1;min-width:0}}
-    .member-name{{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-    .member-num{{font-size:11px;color:var(--t3);font-family:monospace}}
-    .member-actions{{display:flex;gap:5px;flex-shrink:0}}
-    .member-tag{{font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;
-                 text-transform:uppercase;letter-spacing:.04em}}
-    .tag-sheet{{background:rgba(56,139,253,.12);color:var(--blue)}}
-    .tag-paused{{background:rgba(240,136,62,.12);color:var(--orange)}}
-    .icon-btn{{background:none;border:1px solid var(--b1);color:var(--t2);border-radius:5px;
-               padding:4px 7px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .12s}}
-    .icon-btn:hover{{background:var(--s3);color:var(--t1);border-color:var(--b2)}}
-    .icon-btn.danger:hover{{background:rgba(248,81,73,.1);color:var(--red);border-color:rgba(248,81,73,.3)}}
-    .name-field{{background:var(--s1);border:1px solid var(--b1);color:var(--t1);
-                 border-radius:5px;padding:4px 8px;font-size:12px;font-family:inherit;width:90px}}
-    .name-field:focus{{outline:none;border-color:var(--blue)}}
-    .member-item.paused{{opacity:.45}}
-
-    /* ADD ROW */
-    .add-row{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}}
-    .field{{flex:1;min-width:100px;background:var(--s1);border:1px solid var(--b1);
-            color:var(--t1);border-radius:var(--r2);padding:7px 12px;font-size:13px;
-            font-family:inherit}}
-    .field:focus{{outline:none;border-color:var(--blue)}}
-
-    /* SCHEDULE */
-    .sched-row{{display:flex;align-items:center;gap:8px;padding:8px 0;
-                border-bottom:1px solid var(--b1)}}
-    .sched-row:last-child{{border-bottom:none}}
-    .sched-day{{font-size:13px;font-weight:500;width:78px;flex-shrink:0}}
-    .sched-time{{font-size:13px;color:var(--t2);flex:1;font-family:monospace}}
-    .sched-set{{color:var(--green);font-size:11px;font-weight:600}}
-    .sched-unset{{color:var(--t3);font-size:11px}}
-    .spin-wrap{{display:flex;flex-direction:column;align-items:center;gap:0}}
-    .spin-btn{{background:none;border:none;color:var(--t3);font-size:9px;line-height:1;
-               cursor:pointer;padding:1px 5px}}
-    .spin-btn:hover{{color:var(--t1)}}
-    .spin-val{{background:var(--s1);border:1px solid var(--b1);color:var(--t1);
-               border-radius:5px;padding:3px 0;font-size:13px;font-weight:600;
-               text-align:center;width:34px;font-family:monospace;-moz-appearance:textfield}}
-    .spin-val::-webkit-outer-spin-button,.spin-val::-webkit-inner-spin-button{{-webkit-appearance:none}}
+    .live-dot{{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;margin-right:.4rem;animation:pulse 1.5s infinite}}
+    .dialin{{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:.8rem 1rem;display:flex;align-items:center;justify-content:space-between}}
+    .dialin-num{{font-size:1.05rem;font-weight:700;letter-spacing:.06em}}
+    .run-meta{{display:flex;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:.6rem .85rem;font-size:.8rem;color:var(--text2);margin-bottom:.6rem}}
+    .run-counts{{font-weight:700;color:var(--green)}}
+    .call-row{{display:flex;align-items:center;gap:.55rem;padding:.5rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);font-size:.82rem;margin-bottom:.3rem}}
+    .call-num{{font-weight:600}}
+    .call-name{{color:var(--text2);font-size:.75rem;flex:1}}
+    .call-stat{{font-weight:600;font-size:.75rem;text-transform:capitalize}}
+    .sec-label{{font-size:.69rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:.3rem 0 .2rem}}
+    .num-row{{display:flex;align-items:center;gap:.45rem;padding:.55rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);margin-bottom:.3rem}}
+    .num-row.paused{{opacity:.55;border-style:dashed}}
+    .num-main{{flex:1;min-width:0}}
+    .num-phone{{font-weight:600;font-size:.85rem}}
+    .num-name-disp{{font-size:.74rem;color:var(--text2);margin-top:.08rem}}
+    .tag{{font-size:.64rem;font-weight:700;padding:.1rem .35rem;border-radius:4px;margin-left:.25rem}}
+    .tag-sheet{{background:rgba(59,130,246,.15);color:#7dd3fc}}
+    .tag-paused{{background:rgba(249,115,22,.15);color:var(--orange)}}
+    .num-actions{{display:flex;gap:.3rem;flex-shrink:0;flex-wrap:wrap}}
+    .name-inp{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:.28rem .5rem;font-size:.76rem;font-family:'Inter',sans-serif;width:85px}}
+    .name-inp:focus{{outline:none;border-color:var(--blue)}}
+    .btn{{border:none;border-radius:6px;padding:.28rem .6rem;font-size:.74rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
+    .btn-save{{background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.3)}}
+    .btn-pause{{background:rgba(249,115,22,.1);color:var(--orange);border:1px solid rgba(249,115,22,.25)}}
+    .btn-resume{{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25)}}
+    .btn-rm{{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}}
+    .add-row{{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.75rem}}
+    .add-inp{{flex:1;min-width:100px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:var(--rs);padding:.55rem .75rem;font-size:.83rem;font-family:'Inter',sans-serif}}
+    .add-inp:focus{{outline:none;border-color:var(--blue)}}
+    .btn-add{{background:linear-gradient(135deg,#15803d,#16a34a);color:#fff;border:none;border-radius:var(--rs);padding:.55rem 1rem;font-size:.83rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .day-grid{{display:flex;flex-direction:column;gap:.4rem}}
+    .day-row{{display:flex;align-items:center;gap:.5rem;padding:.55rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);flex-wrap:wrap;transition:border-color .2s}}
+    .day-row.active{{border-color:var(--blue);background:rgba(59,130,246,.05)}}
+    .day-name{{min-width:80px;font-size:.84rem;font-weight:600}}
+    .day-form{{display:flex;align-items:center;gap:.35rem;flex:1;flex-wrap:wrap}}
+    .spin-wrap{{display:flex;flex-direction:column;align-items:center;gap:1px}}
+    .spin-btn{{background:none;border:none;color:var(--text3);font-size:.6rem;cursor:pointer;padding:.04rem .45rem;font-family:'Inter',sans-serif}}
+    .spin-btn:hover{{color:var(--text)}}
+    .spin-val{{background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:.26rem 0;font-size:.93rem;font-weight:700;text-align:center;width:2.3rem;font-family:'Inter',sans-serif;-moz-appearance:textfield}}
+    .spin-val::-webkit-outer-spin-button,.spin-val::-webkit-inner-spin-button{{-webkit-appearance:none;margin:0}}
     .spin-val:focus{{outline:none;border-color:var(--blue)}}
-    .ampm-grp{{display:flex;border:1px solid var(--b1);border-radius:5px;overflow:hidden}}
-    .ampm-opt{{background:var(--s1);color:var(--t3);border:none;padding:3px 7px;
-               font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}}
-    .ampm-opt.sel{{background:var(--blue-dim);color:#fff}}
-    .sep{{color:var(--t3);font-weight:700;padding:0 2px;font-size:13px}}
-
-    /* TOGGLES */
-    .toggle-row{{display:flex;align-items:center;justify-content:space-between;
-                 padding:10px 0;border-bottom:1px solid var(--b1)}}
-    .toggle-row:last-child{{border-bottom:none}}
-    .toggle-label{{font-size:13px;font-weight:500}}
-    .toggle-sub{{font-size:11px;color:var(--t3);margin-top:2px}}
-    .toggle{{position:relative;width:36px;height:20px;flex-shrink:0}}
-    .toggle input{{opacity:0;width:0;height:0}}
-    .toggle-track{{position:absolute;inset:0;background:var(--b2);border:1px solid var(--b2);
-                   border-radius:10px;cursor:pointer;transition:all .2s}}
-    .toggle input:checked+.toggle-track{{background:var(--green-dim);border-color:var(--green-dim)}}
-    .toggle-track::after{{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;
-                          background:#fff;border-radius:50%;transition:.2s}}
-    .toggle input:checked+.toggle-track::after{{transform:translateX(16px)}}
-
-    /* HANGUP */
-    .live-call-row{{display:flex;align-items:center;gap:8px;padding:8px 12px;
-                    background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);
-                    margin-bottom:6px;font-size:13px}}
-    .hup-actions{{display:flex;gap:5px;margin-left:auto}}
-
-    /* DIALIN */
-    .dialin-card{{background:linear-gradient(135deg,rgba(37,99,235,.06),rgba(37,99,235,.02));
-                  border:1px solid rgba(56,139,253,.2);border-radius:var(--r2);padding:14px 16px}}
-    .dialin-num{{font-size:20px;font-weight:700;letter-spacing:.08em;color:var(--t1);margin-top:4px}}
-
-    /* RECORDING */
-    .rec-file{{background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);
-               padding:10px 12px;font-size:12px;color:var(--t2);margin-top:10px;
-               display:flex;align-items:center;justify-content:space-between}}
-
-    /* ADMIN ZONE */
-    .admin-panel{{background:#0a0e14;border:1px solid #1e2d3d;border-radius:var(--r3);
-                  overflow:hidden}}
-    .admin-panel-header{{background:linear-gradient(135deg,#0d1520,#111d2c);
-                         border-bottom:1px solid #1e2d3d;padding:12px 16px;
-                         display:flex;align-items:center;justify-content:space-between}}
-    .admin-panel-title{{font-size:12px;font-weight:600;color:#4d7fa8;
-                        text-transform:uppercase;letter-spacing:.08em;
-                        display:flex;align-items:center;gap:6px}}
-    .admin-chip{{background:rgba(227,179,65,.1);color:#b8912a;border:1px solid rgba(227,179,65,.2);
-                 border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;
-                 text-transform:uppercase}}
-    .admin-body{{padding:14px 16px}}
-    .admin-note{{font-size:12px;color:#2e4a62;background:rgba(56,139,253,.04);
-                 border:1px solid rgba(56,139,253,.08);border-radius:var(--r);
-                 padding:8px 12px;margin-bottom:12px;line-height:1.5}}
-    .admin-field{{width:100%;background:#070b10;border:1px solid #1e2d3d;color:#8ab4cc;
-                  border-radius:var(--r);padding:7px 10px;font-size:13px;
-                  font-family:inherit;margin-bottom:6px}}
-    .admin-field:focus{{outline:none;border-color:#2563eb}}
-    .admin-actions{{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}}
-    .admin-btn-add{{background:#0d1a28;color:#3a6a8a;border:1px solid #1e3248;
-                    border-radius:var(--r);padding:6px 12px;font-size:12px;font-weight:500;
-                    cursor:pointer;font-family:inherit;transition:all .15s}}
+    .sep{{color:var(--text3);font-size:.95rem;font-weight:700;padding:0 .05rem}}
+    .ampm-grp{{display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden}}
+    .ampm-opt{{background:var(--bg);color:var(--text3);border:none;padding:.26rem .5rem;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}}
+    .ampm-opt.sel{{background:var(--blue);color:#fff}}
+    .btn-set{{background:linear-gradient(135deg,var(--blue2),var(--blue));color:#fff;border:none;border-radius:6px;padding:.3rem .8rem;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-clr{{background:none;border:none;color:var(--red);font-size:.95rem;cursor:pointer;padding:.1rem .3rem;opacity:.7}}
+    .btn-clr:hover{{opacity:1}}
+    .toggle-row{{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;padding:.45rem 0}}
+    .toggle-row+.toggle-row{{border-top:1px solid var(--border)}}
+    .toggle-btn{{border:none;border-radius:20px;padding:.35rem .9rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}}
+    .ton{{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}}
+    .toff{{background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}}
+    .thint{{font-size:.74rem;color:var(--text3);flex:1;line-height:1.4}}
+    .rec-info{{font-size:.76rem;color:var(--text2);margin:.45rem 0 0;padding:.45rem .7rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs)}}
+    .btn-dl{{display:inline-flex;align-items:center;gap:.3rem;background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.25);border-radius:var(--rs);padding:.38rem .8rem;font-size:.78rem;font-weight:600;font-family:'Inter',sans-serif;text-decoration:none;margin-top:.45rem}}
+    .hup-all-row{{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.6rem}}
+    .btn-hup-all{{flex:1;padding:.6rem;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:var(--rs);font-size:.83rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-hup-blk{{flex:1;padding:.6rem;background:rgba(249,115,22,.1);color:var(--orange);border:1px solid rgba(249,115,22,.22);border-radius:var(--rs);font-size:.83rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .live-row{{display:flex;align-items:center;justify-content:space-between;gap:.45rem;padding:.5rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);font-size:.81rem;margin-bottom:.3rem}}
+    .live-acts{{display:flex;gap:.3rem}}
+    .btn-hup{{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.22);border-radius:6px;padding:.24rem .55rem;font-size:.73rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-hup-b{{background:rgba(249,115,22,.1);color:var(--orange);border:1px solid rgba(249,115,22,.2);border-radius:6px;padding:.24rem .55rem;font-size:.73rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .btn-sync{{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.25);border-radius:var(--rs);padding:.42rem .9rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
+    .admin-zone{{background:#070c14;border:1px solid #1a2d45;border-radius:var(--r);overflow:hidden;margin-top:.5rem}}
+    .admin-hdr{{background:linear-gradient(135deg,#0d1a2e,#142236);border-bottom:1px solid #1a2d45;padding:.85rem 1.25rem;display:flex;align-items:center;justify-content:space-between}}
+    .admin-title{{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#3b82f6;display:flex;align-items:center;gap:.5rem}}
+    .admin-chip{{background:rgba(234,179,8,.1);color:#b8912a;border:1px solid rgba(234,179,8,.2);border-radius:4px;padding:.1rem .4rem;font-size:.65rem;font-weight:700;text-transform:uppercase}}
+    .admin-body{{padding:1.25rem}}
+    .admin-note{{font-size:.77rem;color:#4a6080;background:rgba(56,139,253,.04);border:1px solid rgba(56,139,253,.08);border-radius:var(--rs);padding:.65rem .9rem;margin-bottom:.85rem;line-height:1.5}}
+    .admin-inp{{width:100%;background:#070b10;border:1px solid #1e2d3d;color:#8ab4cc;border-radius:var(--rs);padding:.6rem .85rem;font-size:.84rem;font-family:'Inter',sans-serif;margin-bottom:.4rem}}
+    .admin-inp:focus{{outline:none;border-color:#2563eb}}
+    .admin-btn-row{{display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap}}
+    .admin-btn-add{{background:#0d1a28;color:#3a6a8a;border:1px solid #1e3248;border-radius:var(--rs);padding:.45rem .85rem;font-size:.78rem;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif}}
     .admin-btn-add:hover{{border-color:#3b82f6;color:#60a5fa}}
-    .admin-btn-run{{flex:1;background:rgba(63,185,80,.08);color:#3fb950;
-                    border:1px solid rgba(63,185,80,.2);border-radius:var(--r);
-                    padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;
-                    font-family:inherit;transition:all .15s}}
+    .admin-btn-run{{flex:1;background:rgba(63,185,80,.08);color:#3fb950;border:1px solid rgba(63,185,80,.2);border-radius:var(--rs);padding:.5rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}}
     .admin-btn-run:hover{{background:rgba(63,185,80,.15);border-color:rgba(63,185,80,.4)}}
-
-    /* TOAST */
-    .toast{{position:fixed;bottom:24px;right:24px;background:var(--t1);
-            border:1px solid var(--t1);color:var(--bg);padding:10px 16px;
-            border-radius:var(--r2);font-size:13px;opacity:0;transition:all .25s;
-            pointer-events:none;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.4)}}
+    .footer{{display:flex;justify-content:center;gap:1.25rem;padding:1rem 0;font-size:.74rem}}
+    .footer a{{color:var(--text3);transition:color .15s}}
+    .footer a:hover{{color:var(--blue)}}
+    .toast{{position:fixed;bottom:1.75rem;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:.55rem 1.3rem;border-radius:999px;font-size:.81rem;font-weight:500;opacity:0;transition:opacity .25s;pointer-events:none;z-index:999;box-shadow:var(--shadow);white-space:nowrap}}
     .toast.show{{opacity:1}}
-
-    /* SECTION DIVIDER */
-    .section-title{{font-size:11px;font-weight:600;text-transform:uppercase;
-                    letter-spacing:.06em;color:var(--t3);margin-bottom:10px}}
-    .empty-state{{font-size:13px;color:var(--t3);padding:16px 0;text-align:center}}
   </style>
 </head>
 <body>
+<div class='topbar'>
+  <div class='brand'><div class='brand-icon'>📞</div><span class='brand-name'>Conference Manager</span></div>
+  <form method='POST' action='/logout' style='margin:0'><button class='signout'>Sign out</button></form>
+</div>
+<div class='page'>
 
-<nav>
-  <div class='nav-left'>
-    <div class='nav-logo'>📞</div>
-    <span class='nav-title'>Conference Manager</span>
-    <span class='nav-sub'>Shmiras HaLashon</span>
+  <div class='card' style='display:flex;flex-direction:column;gap:.5rem'>
+    <button class='trigger-btn' id='trigger-btn' onclick='triggerConference()'>▶&nbsp; Start Conference Now</button>
+    <button id='stop-btn' onclick='stopConference()'
+      style='display:none;width:100%;padding:.6rem;background:rgba(239,68,68,.1);color:#ef4444;
+             border:1px solid rgba(239,68,68,.22);border-radius:var(--r);font-size:.84rem;
+             font-weight:700;cursor:pointer;font-family:Inter,sans-serif'>⏹ Force Stop</button>
   </div>
-  <div class='nav-right'>
-    <a href='/history' class='nav-link'>Call History</a>
-    <form method='POST' action='/logout' style='margin:0'>
-      <button class='nav-btn'>Sign out</button>
-    </form>
+
+  <div class='card'>
+    <div class='card-hdr'><span class='card-title'>🔴 Active Call Controls</span></div>
+    <div id='hangup-controls'><p style='color:var(--text3);font-size:.82rem'>No active calls.</p></div>
   </div>
-</nav>
 
-<div class='layout'>
-
-  <!-- SIDEBAR -->
-  <aside class='sidebar'>
-    <div class='sidebar-section'>
-      <div class='sidebar-label'>Overview</div>
-      <button class='sidebar-item active' onclick='showSection("dashboard")'>
-        <svg viewBox='0 0 16 16' fill='currentColor'><path d='M2 2h5v5H2V2zm0 7h5v5H2V9zm7-7h5v5H9V2zm0 7h5v5H9V9z'/></svg>
-        Dashboard
-        <span class='sidebar-badge live' id='sidebar-live' style='display:none'>Live</span>
-      </button>
-      <a href='/history' class='sidebar-item' style='text-decoration:none'>
-        <svg viewBox='0 0 16 16' fill='currentColor'><path d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm1 7.5H7V4h2v3.5H11V9H9z'/></svg>
-        Call History
-      </a>
+  <div class='card'>
+    <div class='card-hdr'><span class='card-title'>Dial-In Number</span></div>
+    <div class='dialin'>
+      <span style='font-size:.79rem;color:var(--text2)'>Members call in:</span>
+      <span class='dialin-num'>{dial_in}</span>
     </div>
-    <div class='sidebar-section'>
-      <div class='sidebar-label'>Settings</div>
-      <button class='sidebar-item' onclick='showSection("members")'>
-        <svg viewBox='0 0 16 16' fill='currentColor'><path d='M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5 5s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3z'/></svg>
-        Members
-        <span class='sidebar-badge' id='sidebar-count'>0</span>
-      </button>
-      <button class='sidebar-item' onclick='showSection("schedule")'>
-        <svg viewBox='0 0 16 16' fill='currentColor'><path d='M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z'/></svg>
-        Schedule
-      </button>
-      <button class='sidebar-item' onclick='showSection("settings")'>
-        <svg viewBox='0 0 16 16' fill='currentColor'><path d='M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z'/><path d='M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.892 3.433-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.892-1.64-.901-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319z'/></svg>
-        Settings
-      </button>
-    </div>
-    <div class='sidebar-section'>
-      <div class='sidebar-label'>Admin</div>
-      <button class='sidebar-item' onclick='showSection("test")'>
-        <svg viewBox='0 0 16 16' fill='currentColor'><path d='M14 1H2a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5h1a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zm-2 12H4V5h8v8zM2 3V2h12v1H2z'/></svg>
-        Test Mode
-        <span class='sidebar-badge' style='background:rgba(227,179,65,.1);color:#b8912a'>Admin</span>
-      </button>
-    </div>
-  </aside>
+  </div>
 
-  <!-- MAIN CONTENT -->
-  <main class='main'>
+  <div class='card'>
+    <div class='card-hdr'>
+      <span class='card-title'>Last Conference</span>
+      <a href='/history' style='font-size:.74rem;color:var(--blue)'>History →</a>
+    </div>
+    <div id='last-run'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+  </div>
 
-    <!-- DASHBOARD SECTION -->
-    <div id='sec-dashboard'>
-      <div class='status-bar'>
-        <div class='status-dot' id='status-dot'></div>
-        <span class='status-text' id='status-text'>No conference running</span>
-        <span class='status-meta' id='status-meta'></span>
+  <div class='card'>
+    <div class='card-hdr'>
+      <span class='card-title'>Phone Numbers</span>
+      <span id='num-count' style='font-size:.72rem;background:rgba(59,130,246,.15);color:var(--blue);padding:.18rem .5rem;border-radius:999px;font-weight:700'>0</span>
+    </div>
+    <div class='add-row'>
+      <input class='add-inp' type='tel'  id='new-num'  placeholder='Number e.g. 2025551234'/>
+      <input class='add-inp' type='text' id='new-name' placeholder='Name (optional)'/>
+      <button class='btn-add' onclick='addNumber()'>+ Add</button>
+    </div>
+    <div id='members-list'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+  </div>
+
+  <div class='card'>
+    <div class='card-hdr'><span class='card-title'>Schedule</span></div>
+    <div class='day-grid' id='day-grid'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+    <p style='font-size:.72rem;color:var(--text3);margin-top:.5rem'>Times are Eastern (ET) · Press Set to save</p>
+  </div>
+
+  <div class='card'>
+    <div class='card-hdr'><span class='card-title'>Recording</span></div>
+    <div id='rec-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+  </div>
+
+  <div class='card'>
+    <div class='card-hdr'><span class='card-title'>Join Announcements</span></div>
+    <div id='ann-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+  </div>
+
+  <div class='card'>
+    <div class='card-hdr'><span class='card-title'>Google Sheets Sync</span></div>
+    <p style='font-size:.77rem;color:var(--text2);margin-bottom:.7rem'>Syncs automatically on startup. Column A = name, Column B = number.</p>
+    <div id='sheets-section'></div>
+  </div>
+
+  <div class='admin-zone'>
+    <div class='admin-hdr'>
+      <div class='admin-title'>🧪 Test Mode <span class='admin-chip'>Admin Only</span></div>
+      <span style='font-size:.7rem;color:#2a4060'>Real members not called</span>
+    </div>
+    <div class='admin-body'>
+      <div class='admin-note'>Enter numbers to test the full conference flow. Real members will not be called.</div>
+      <div id='test-numbers'>
+        <input class='admin-inp' type='tel' id='test-num-0' placeholder='Number e.g. 2025551234'/>
       </div>
-
-      <div style='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px'>
-        <!-- LEFT: Launch + Stats -->
-        <div>
-          <div class='panel'>
-            <div class='panel-header'><span class='panel-title'>Start Conference</span></div>
-            <div class='panel-body'>
-              <button class='launch-btn' id='trigger-btn' onclick='triggerConference()'>
-                <svg width='16' height='16' viewBox='0 0 16 16' fill='currentColor'><path d='M6 3.472v9.056L12.44 8 6 3.472z'/></svg>
-                Start Conference Now
-              </button>
-              <button id='stop-btn' onclick='stopConference()'>⏹ Force Stop</button>
-              <div class='metric-grid'>
-                <div class='metric'><div class='metric-val green' id='stat-conn'>—</div><div class='metric-lbl'>Connected</div></div>
-                <div class='metric'><div class='metric-val blue' id='stat-total'>—</div><div class='metric-lbl'>Total Dialed</div></div>
-              </div>
-            </div>
-          </div>
-
-          <div class='panel'>
-            <div class='panel-header'><span class='panel-title'>Dial-In Number</span></div>
-            <div class='panel-body'>
-              <div class='dialin-card'>
-                <div style='font-size:12px;color:var(--t3)'>Members call in directly</div>
-                <div class='dialin-num'>{dial_in}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- RIGHT: Active Calls + Hangup -->
-        <div>
-          <div class='panel'>
-            <div class='panel-header'>
-              <span class='panel-title'>Active Call Controls</span>
-              <button class='panel-action' onclick='renderHangup()'>Refresh</button>
-            </div>
-            <div class='panel-body' id='hangup-controls'>
-              <div class='empty-state'>No active calls</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Last Conference Full Width -->
-      <div class='panel'>
-        <div class='panel-header'>
-          <span class='panel-title'>Last Conference</span>
-          <a href='/history' class='panel-action'>View all history →</a>
-        </div>
-        <div class='panel-body' id='last-run'>
-          <div class='empty-state'>No conference run yet</div>
-        </div>
+      <div class='admin-btn-row'>
+        <button class='admin-btn-add' onclick='addTestNumber()'>+ Add Number</button>
+        <button class='admin-btn-run' onclick='runTest()'>▶ Run Test Conference</button>
       </div>
     </div>
+  </div>
 
-    <!-- MEMBERS SECTION -->
-    <div id='sec-members' style='display:none'>
-      <div class='panel'>
-        <div class='panel-header'>
-          <span class='panel-title'>Phone Numbers <span id='num-count' style='background:var(--s3);color:var(--t2);font-size:11px;padding:1px 8px;border-radius:10px;margin-left:6px;font-weight:500'>0</span></span>
-          <button class='panel-action' onclick='sheetsSync()'>↺ Sync from Sheet</button>
-        </div>
-        <div class='panel-body'>
-          <div class='add-row' style='margin-bottom:16px'>
-            <input class='field' type='tel'  id='new-num'  placeholder='Number e.g. 2025551234'/>
-            <input class='field' type='text' id='new-name' placeholder='Name'/>
-            <button class='btn btn-success' onclick='addNumber()'>Add</button>
-          </div>
-          <div id='members-list'><div class='empty-state'>Loading...</div></div>
-          <div style='margin-top:14px;padding-top:14px;border-top:1px solid var(--b1);font-size:12px;color:var(--t3)'>
-            Numbers synced from Google Sheet are marked with a Sheet tag. Column A = name, Column B = phone number.
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SCHEDULE SECTION -->
-    <div id='sec-schedule' style='display:none'>
-      <div class='panel'>
-        <div class='panel-header'><span class='panel-title'>Weekly Schedule</span></div>
-        <div class='panel-body'>
-          <div style='font-size:12px;color:var(--t3);margin-bottom:14px'>All times are Eastern (ET). Set a time for each day you want the conference to run automatically.</div>
-          <div id='day-grid'><div class='empty-state'>Loading...</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SETTINGS SECTION -->
-    <div id='sec-settings' style='display:none'>
-      <div style='display:grid;grid-template-columns:1fr 1fr;gap:16px'>
-        <div class='panel'>
-          <div class='panel-header'><span class='panel-title'>Recording</span></div>
-          <div class='panel-body' id='rec-section'><div class='empty-state'>Loading...</div></div>
-        </div>
-        <div class='panel'>
-          <div class='panel-header'><span class='panel-title'>Announcements</span></div>
-          <div class='panel-body' id='ann-section'><div class='empty-state'>Loading...</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TEST SECTION -->
-    <div id='sec-test' style='display:none'>
-      <div class='admin-panel'>
-        <div class='admin-panel-header'>
-          <div class='admin-panel-title'>
-            🧪 Test Mode
-            <span class='admin-chip'>Admin Only</span>
-          </div>
-          <span style='font-size:11px;color:#1e3a4a'>Real members will not be called</span>
-        </div>
-        <div class='admin-body'>
-          <div class='admin-note'>Enter one or more phone numbers to run a full conference test. The system will dial only these numbers — everything else (announcement, recording, history) works exactly as in a real call.</div>
-          <div id='test-numbers'>
-            <input class='admin-field' type='tel' id='test-num-0' placeholder='Enter phone number e.g. 2025551234'/>
-          </div>
-          <div class='admin-actions'>
-            <button class='admin-btn-add' onclick='addTestNumber()'>+ Add another number</button>
-            <button class='admin-btn-run' onclick='runTest()'>▶ Run Test Conference</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-  <!-- RIGHT SIDEBAR -->
-  <aside class='rightbar'>
-    <div style='margin-bottom:16px'>
-      <div class='section-title'>Google Sheets</div>
-      <div style='font-size:12px;color:var(--t3);margin-bottom:10px;line-height:1.5'>Numbers sync automatically on startup. Col A = name, Col B = number.</div>
-      <div id='sheets-section'></div>
-    </div>
-    <div style='border-top:1px solid var(--b1);padding-top:16px;margin-bottom:16px'>
-      <div class='section-title'>Quick Actions</div>
-      <div style='display:flex;flex-direction:column;gap:6px'>
-        <a href='#' onclick='event.preventDefault();showSection("members")' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px;text-decoration:none'>Manage Members</a>
-        <a href='#' onclick='event.preventDefault();showSection("schedule")' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px;text-decoration:none'>Edit Schedule</a>
-        <a href='#' onclick='event.preventDefault();showSection("test")' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px;text-decoration:none'>Run Test</a>
-        <a href='/history' class='btn btn-ghost btn-full' style='justify-content:flex-start;gap:8px'>
-          <svg width='14' height='14' viewBox='0 0 16 16' fill='currentColor'><path d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm1 7.5H7V4h2v3.5H11V9H9z'/></svg>
-          Call History
-        </a>
-      </div>
-    </div>
-    <div style='border-top:1px solid var(--b1);padding-top:16px'>
-      <div class='section-title'>System</div>
-      <div id='system-info' style='font-size:12px;color:var(--t3);line-height:1.8'></div>
-    </div>
-  </aside>
-
-</div><!-- /layout -->
+  <div class='footer'><a href='/history'>📋 Call History</a></div>
+</div>
 <div class='toast' id='toast'></div>
 
 <script>
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-
-const STATUS_MAP={{
-  connected:{{color:"var(--green)",label:"Connected",badge:"badge-connected"}},
-  dialing:{{color:"var(--yellow)",label:"Ringing",badge:"badge-dialing"}},
-  voicemail:{{color:"var(--orange)",label:"Voicemail",badge:"badge-voicemail"}},
-  unanswered:{{color:"var(--t3)",label:"No answer",badge:""}},
-  busy:{{color:"var(--red)",label:"Busy",badge:"badge-failed"}},
-  failed:{{color:"var(--red)",label:"Failed",badge:"badge-failed"}},
-  error:{{color:"var(--red)",label:"Error",badge:"badge-failed"}},
-  "inbound-joined":{{color:"var(--blue)",label:"Called in",badge:"badge-inbound"}},
-  "inbound-pending":{{color:"var(--yellow)",label:"Calling in",badge:"badge-dialing"}},
-  "inbound-declined":{{color:"var(--t3)",label:"Declined",badge:""}},
-  "heard-recording":{{color:"var(--purple)",label:"Heard recording",badge:"badge-recording"}},
-}};
+const STAT_COLORS={{connected:"#22c55e",voicemail:"#f97316",dialing:"#fbbf24",busy:"#ef4444",
+  unanswered:"#8899bb",timeout:"#8899bb",failed:"#ef4444",error:"#ef4444",
+  "inbound-joined":"#22c55e","inbound-pending":"#fbbf24","inbound-declined":"#8899bb","heard-recording":"#a78bfa"}};
+const STAT_ICONS={{connected:"✅",voicemail:"📵",dialing:"⏳",busy:"🔴",unanswered:"🔕",
+  timeout:"🔕",failed:"❌",error:"❌","inbound-joined":"📲","inbound-pending":"⏳",
+  "inbound-declined":"📵","heard-recording":"🎧"}};
 
 function toast(msg,dur=2400){{
   const t=document.getElementById("toast");
   t.textContent=msg;t.classList.add("show");
   setTimeout(()=>t.classList.remove("show"),dur);
 }}
-
 async function api(url,data){{
   return fetch(url,{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify(data||{{}})}})
     .then(r=>r.json()).catch(()=>({{ok:false}}));
 }}
 
-// ── Section navigation ────────────────────────────────────────────────────
-function showSection(name){{
-  var secs=["dashboard","members","schedule","settings","test"];
-  for(var i=0;i<secs.length;i++){{
-    var s=secs[i];
-    var el=document.getElementById("sec-"+s);
-    if(el)el.style.display=(s===name)?"block":"none";
-    var nav=document.getElementById("nav-"+s);
-    if(nav){{
-      if(s===name)nav.classList.add("active");
-      else nav.classList.remove("active");
-    }}
-  }}
-}}
-
-
-// ── Last Run ──────────────────────────────────────────────────────────────
 function renderLastRun(s){{
-  const el  = document.getElementById("last-run");
-  const btn = document.getElementById("trigger-btn");
-  const dot = document.getElementById("status-dot");
-  const stxt= document.getElementById("status-text");
-  const smeta=document.getElementById("status-meta");
-  const liveBadge=document.getElementById("sidebar-live");
+  const el=document.getElementById("last-run");
+  const btn=document.getElementById("trigger-btn");
   const stopBtn=document.getElementById("stop-btn");
-  const sc  = document.getElementById("stat-conn");
-  const st  = document.getElementById("stat-total");
-
-  const calls = s.calls||[];
-  const connected = calls.filter(c=>c.status==="connected").length;
-
-  if(s.running){{
-    btn.disabled=true;
-    btn.innerHTML='<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="animation:pulse 1s infinite"><circle cx="8" cy="8" r="7"/></svg> Conference in Progress';
-    dot.classList.add("live");
-    stxt.textContent="Conference in progress";
-    smeta.textContent=`${{connected}} connected`;
-    if(liveBadge)liveBadge.style.display="inline";
-    if(stopBtn)stopBtn.style.display="block";
-  }}else{{
-    btn.disabled=false;
-    btn.innerHTML='<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.472v9.056L12.44 8 6 3.472z"/></svg> Start Conference Now';
-    dot.classList.remove("live");
-    stxt.textContent = s.run_time ? `Last run: ${{s.run_time}}` : "No conference running";
-    smeta.textContent = s.run_time ? `${{connected}}/${{calls.length}} connected` : "";
-    if(liveBadge)liveBadge.style.display="none";
-    if(stopBtn)stopBtn.style.display="none";
-  }}
-
-  if(sc)sc.textContent = s.run_time ? connected : "—";
-  if(st)st.textContent = s.run_time ? calls.length : "—";
-
-  if(!s.run_time){{el.innerHTML='<div class="empty-state">No conference run yet</div>';return;}}
-
-  const rows = calls.map(c=>{{
-    const sm = STATUS_MAP[c.status]||{{color:"var(--t3)",label:c.status,badge:""}};
-    const badge = sm.badge ? `<span class="call-badge ${{sm.badge}}">${{sm.label}}</span>` : `<span style="font-size:11px;color:var(--t3)">${{sm.label}}</span>`;
-    const name = c.name ? `<span class="call-name"> · ${{c.name}}</span>` : "";
-    const err  = c.error ? `<span style="color:var(--red);font-size:11px"> (${{c.error}})</span>` : "";
-    return `<div class="call-item">
-      <div class="call-status-dot" style="background:${{sm.color}}"></div>
-      <span class="call-num">${{c.number}}</span>${{name}}${{err}}
-      ${{badge}}
-    </div>`;
+  const calls=s.calls||[];
+  const connected=calls.filter(c=>c.status==="connected").length;
+  if(s.running){{btn.disabled=true;btn.innerHTML='<span class="live-dot"></span>Conference in Progress';if(stopBtn)stopBtn.style.display='block';}}
+  else{{btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";if(stopBtn)stopBtn.style.display='none';}}
+  if(!s.run_time){{el.innerHTML='<p style="color:var(--text3);font-size:.82rem">No conference run yet.</p>';return;}}
+  const badge=s.running?'<span style="color:var(--green);font-size:.72rem;font-weight:700">● Live</span>':'';
+  const rows=calls.map(c=>{{
+    const icon=STAT_ICONS[c.status]||"❓";
+    const color=STAT_COLORS[c.status]||"#8899bb";
+    const name=c.name?`<span class="call-name">${{c.name}}</span>`:'';
+    const err=c.error?`<span style="color:var(--red);font-size:.71rem"> (${{c.error}})</span>`:'';
+    return `<div class="call-row"><span>${{icon}}</span><span class="call-num">${{c.number}}</span>${{name}}<span class="call-stat" style="color:${{color}}">${{c.status}}</span>${{err}}</div>`;
   }}).join("");
-  el.innerHTML = rows || '<div class="empty-state">No calls logged</div>';
+  el.innerHTML=`<div class="run-meta"><span style="color:var(--text2)">${{s.run_time}} ${{badge}}</span><span class="run-counts">${{connected}}/${{calls.length}} connected</span></div>${{rows}}`;
 }}
 
-// ── Members ────────────────────────────────────────────────────────────────
 function renderMembers(members){{
-  const countEl = document.getElementById("num-count");
-  const sideCount = document.getElementById("sidebar-count");
-  if(countEl) countEl.textContent = members.length;
-  if(sideCount) sideCount.textContent = members.length;
-  const el = document.getElementById("members-list");
-  if(!el) return;
-  if(!members.length){{el.innerHTML='<div class="empty-state">No members yet. Add one above or sync from Google Sheet.</div>';return;}}
-
-  const active = members.filter(m=>!m.paused);
-  const paused = members.filter(m=>m.paused);
-
+  document.getElementById("num-count").textContent=members.length;
+  const el=document.getElementById("members-list");
+  if(!members.length){{el.innerHTML='<p style="color:var(--text3);font-size:.82rem">No numbers yet.</p>';return;}}
+  const active=members.filter(m=>!m.paused);
+  const paused=members.filter(m=>m.paused);
   function row(m){{
-    const initials = m.name ? m.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase() : m.number.slice(-2);
-    const srcTag = m.source==="sheet" ? `<span class="member-tag tag-sheet">Sheet</span>` : "";
-    const pauseTag = m.paused ? `<span class="member-tag tag-paused">Paused</span>` : "";
-    return `<div class="member-item${{m.paused?' paused':''}}">
-      <div class="member-avatar">${{initials}}</div>
-      <div class="member-info">
-        <div class="member-name">${{m.name||'<span style="color:var(--t3)">No name</span>'}}</div>
-        <div class="member-num">${{m.number}} ${{srcTag}}${{pauseTag}}</div>
+    const srcTag=m.source==="sheet"?`<span class="tag tag-sheet">Sheet</span>`:'';
+    const pauseTag=m.paused?`<span class="tag tag-paused">Paused</span>`:'';
+    const disp=m.name||`<span style="color:var(--text3);font-size:.73rem">No name</span>`;
+    return `<div class="num-row${{m.paused?' paused':''}}" >
+      <div class="num-main">
+        <div style="display:flex;align-items:center">${{srcTag}}${{pauseTag}}<span class="num-phone" style="margin-left:.2rem">${{m.number}}</span></div>
+        <div class="num-name-disp">${{disp}}</div>
       </div>
-      <div class="member-actions">
-        <input class="name-field" type="text" value="${{m.name}}" placeholder="Name" id="nm-${{m.number}}"/>
-        <button class="icon-btn" onclick="saveName('${{m.number}}')">Save</button>
-        <button class="icon-btn" onclick="togglePause('${{m.number}}',${{m.paused}})">${{m.paused?"▶":"⏸"}}</button>
-        <button class="icon-btn danger" onclick="removeMember('${{m.number}}')">✕</button>
+      <div class="num-actions">
+        <input class="name-inp" type="text" value="${{m.name}}" placeholder="Name" id="nm-${{m.number}}"/>
+        <button class="btn btn-save" onclick="saveName('${{m.number}}')" >Save</button>
+        <button class="btn ${{m.paused?'btn-resume':'btn-pause'}}" onclick="togglePause('${{m.number}}',${{m.paused}})">${{m.paused?'Resume':'Pause'}}</button>
+        <button class="btn btn-rm" onclick="removeMember('${{m.number}}')">✕</button>
       </div>
     </div>`;
   }}
-
-  let html = "";
-  if(active.length){{
-    html += `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--green);margin-bottom:6px">✓ Will be called (${{active.length}})</div>`;
-    html += active.map(row).join("");
-  }}
-  if(paused.length){{
-    html += `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--orange);margin-top:14px;margin-bottom:6px">⏸ Paused — skipped (${{paused.length}})</div>`;
-    html += paused.map(row).join("");
-  }}
-  el.innerHTML = html;
+  let html='';
+  if(active.length)html+=`<div class="sec-label" style="color:var(--green)">✅ Will be called (${{active.length}})</div>`+active.map(row).join('');
+  if(paused.length)html+=`<div class="sec-label" style="color:var(--orange);margin-top:.4rem">⏸ Paused (${{paused.length}})</div>`+paused.map(row).join('');
+  el.innerHTML=html;
 }}
 
-// ── Schedule Spinners ──────────────────────────────────────────────────────
 const SS=Array.from({{length:7}},()=>({{h:12,m:0,ap:"AM"}}));
 function to24(s){{let h=s.h%12;if(s.ap==="PM")h+=12;return h;}}
 function loadSS(day,h24,m){{
@@ -1702,7 +1330,22 @@ function spinM(day,d){{SS[day].m=((SS[day].m+d)+60)%60;updSpin(day);}}
 function setAP(day,v){{SS[day].ap=v;updSpin(day);}}
 function setHDirect(day,val){{let h=parseInt(val);if(isNaN(h))return;SS[day].h=Math.max(1,Math.min(12,h));updSpin(day);}}
 function setMDirect(day,val){{let m=parseInt(val);if(isNaN(m))return;SS[day].m=Math.max(0,Math.min(59,m));updSpin(day);}}
-
+function spinnerHTML(day){{
+  const s=SS[day];
+  return `<div class="spin-wrap">
+    <button class="spin-btn" onclick="spinH(${{day}},1)">▲</button>
+    <input class="spin-val" type="number" id="sh-${{day}}" value="${{String(s.h).padStart(2,'00')}}" min="1" max="12" onchange="setHDirect(${{day}},this.value)" onclick="this.select()"/>
+    <button class="spin-btn" onclick="spinH(${{day}},-1)">▼</button></div>
+    <span class="sep">:</span>
+    <div class="spin-wrap">
+    <button class="spin-btn" onclick="spinM(${{day}},1)">▲</button>
+    <input class="spin-val" type="number" id="sm-${{day}}" value="${{String(s.m).padStart(2,'00')}}" min="0" max="59" onchange="setMDirect(${{day}},this.value)" onclick="this.select()"/>
+    <button class="spin-btn" onclick="spinM(${{day}},-1)">▼</button></div>
+    <div class="ampm-grp">
+      <button class="ampm-opt${{s.ap==='AM'?' sel':''}}" id="ap-${{day}}-AM" onclick="setAP(${{day}},'AM')">AM</button>
+      <button class="ampm-opt${{s.ap==='PM'?' sel':''}}" id="ap-${{day}}-PM" onclick="setAP(${{day}},'PM')">PM</button>
+    </div>`;
+}}
 function renderSchedule(schedule){{
   const grid=document.getElementById("day-grid");
   if(!grid)return;
@@ -1713,145 +1356,90 @@ function renderSchedule(schedule){{
   }});
   grid.innerHTML=DAYS.map((name,i)=>{{
     const isSet=!!byDay[i];
-    const s=SS[i];
-    const h24=to24(s);
-    const ampm=h24<12?"AM":"PM";
-    const h12=(h24%12)||12;
-    const timeStr=isSet?`${{String(h12).padStart(2,"0")}}:${{String(s.m).padStart(2,"0")}} ${{ampm}}`:"Not set";
-    const clearBtn=isSet?`<button class="icon-btn danger" onclick="clearDay(${{i}})" style="font-size:11px">Remove</button>`:"";
-    return `<div class="sched-row">
-      <span class="sched-day">${{name}}</span>
-      <div style="display:flex;align-items:center;gap:6px;flex:1">
-        <div class="spin-wrap"><button class="spin-btn" onclick="spinH(${{i}},1)">▲</button>
-          <input class="spin-val" type="number" id="sh-${{i}}" value="${{String(s.h).padStart(2,'00')}}" min="1" max="12" onchange="setHDirect(${{i}},this.value)" onclick="this.select()"/>
-          <button class="spin-btn" onclick="spinH(${{i}},-1)">▼</button></div>
-        <span class="sep">:</span>
-        <div class="spin-wrap"><button class="spin-btn" onclick="spinM(${{i}},1)">▲</button>
-          <input class="spin-val" type="number" id="sm-${{i}}" value="${{String(s.m).padStart(2,'00')}}" min="0" max="59" onchange="setMDirect(${{i}},this.value)" onclick="this.select()"/>
-          <button class="spin-btn" onclick="spinM(${{i}},-1)">▼</button></div>
-        <div class="ampm-grp">
-          <button class="ampm-opt${{s.ap==="AM"?" sel":""}}" id="ap-${{i}}-AM" onclick="setAP(${{i}},'AM')">AM</button>
-          <button class="ampm-opt${{s.ap==="PM"?" sel":""}}" id="ap-${{i}}-PM" onclick="setAP(${{i}},'PM')">PM</button>
-        </div>
-        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="setDay(${{i}})">${{isSet?"Update":"Set"}}</button>
+    const clearBtn=isSet?`<button class="btn-clr" onclick="clearDay(${{i}})">✕</button>`:"";
+    return `<div class="day-row${{isSet?' active':''}}" id="day-${{i}}">
+      <span class="day-name">${{name}}</span>
+      <div class="day-form">${{spinnerHTML(i)}}
+        <button class="btn-set" onclick="setDay(${{i}})">${{isSet?'Update':'Set'}}</button>
         ${{clearBtn}}
-      </div>
-      <span style="font-size:11px;color:${{isSet?'var(--green)':' var(--t3)'}}">${{isSet?"✓ "+timeStr:"—"}}</span>
-    </div>`;
+      </div></div>`;
   }}).join("");
 }}
 
-// ── Recording ──────────────────────────────────────────────────────────────
 function renderRec(s){{
   const el=document.getElementById("rec-section");
   if(!el)return;
   const recOn=s.record_enabled,repOn=s.replay_enabled;
-  let recFile="";
+  let info='',dl='';
   if(s.rec_exists&&s.rec_meta&&s.rec_meta.date){{
     const kb=(s.rec_meta.size_bytes||0)>>10;
-    recFile=`<div class="rec-file"><span>Recording from ${{s.rec_meta.date}} · ${{kb}} KB</span><a href="/recordings/audio" download="conference.mp3" class="btn btn-secondary" style="padding:4px 10px;font-size:11px">Download</a></div>`;
-  }}else{{
-    recFile='<div class="rec-file">No recording saved yet</div>';
-  }}
-  el.innerHTML=`
-    <div class="toggle-row">
-      <div><div class="toggle-label">Record calls</div><div class="toggle-sub">Save a recording of each conference</div></div>
-      <label class="toggle"><input type="checkbox" ${{recOn?"checked":""}} onchange="toggleSetting('record_enabled')"><span class="toggle-track"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Replay for late callers</div><div class="toggle-sub">Play recording when conference is over</div></div>
-      <label class="toggle"><input type="checkbox" ${{repOn?"checked":""}} onchange="toggleSetting('replay_enabled')"><span class="toggle-track"></span></label>
-    </div>
-    ${{recFile}}`;
+    info=`<div class="rec-info">Recorded: ${{s.rec_meta.date}} · ${{kb}} KB</div>`;
+    dl=`<a href="/recordings/audio" class="btn-dl" download="conference.mp3">⬇ Download</a>`;
+  }}else{{info='<div class="rec-info" style="color:var(--text3)">No recording yet.</div>';}}
+  el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{recOn?'ton':'toff'}}" onclick="toggleSetting('record_enabled')">${{recOn?'Record: On':'Record: Off'}}</button><span class="thint">${{recOn?'Calls will be recorded.':'Enable to record.'}}</span></div>
+  <div class="toggle-row"><button class="toggle-btn ${{repOn?'ton':'toff'}}" onclick="toggleSetting('replay_enabled')">${{repOn?'Replay: On':'Replay: Off'}}</button><span class="thint">${{repOn?'Late callers hear recording if conference is over.':'Enable for replay.'}}</span></div>
+  ${{info}}${{dl}}`;
 }}
-
 function renderAnn(s){{
   const el=document.getElementById("ann-section");
   if(!el)return;
   const on=s.announcements_enabled;
-  el.innerHTML=`
-    <div class="toggle-row">
-      <div><div class="toggle-label">Join announcements</div><div class="toggle-sub">Announce who joined after all calls settle</div></div>
-      <label class="toggle"><input type="checkbox" ${{on?"checked":""}} onchange="toggleSetting('announcements_enabled')"><span class="toggle-track"></span></label>
-    </div>`;
+  el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('announcements_enabled')">${{on?'Announcements: On':'Announcements: Off'}}</button><span class="thint">${{on?'Plays who joined after all calls settle.':'Enable.'}}</span></div>`;
 }}
-
-// ── Sheets ─────────────────────────────────────────────────────────────────
 function renderSheets(msg,ok){{
   const el=document.getElementById("sheets-section");
   if(!el)return;
-  const msgHtml=msg?`<div style="font-size:12px;color:${{ok?'var(--green)':' var(--red)'}};margin-top:6px">${{msg}}</div>`:"";
-  el.innerHTML=`<button class="btn btn-ghost btn-full" onclick="sheetsSync()">↺ Re-sync from Sheet</button>${{msgHtml}}`;
+  const msgHtml=msg?`<span style="color:${{ok?'var(--green)':' var(--red)'}};font-size:.77rem;margin-left:.5rem">${{msg}}</span>`:'';
+  el.innerHTML=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:.5rem"><button class="btn-sync" onclick="sheetsSync()">↺ Re-sync from Sheet</button>${{msgHtml}}</div>`;
 }}
 
-function renderSystemInfo(s){{
-  const el=document.getElementById("system-info");
-  if(!el)return;
-  const members = s.members||[];
-  const active = members.filter(m=>!m.paused).length;
-  const sched = s.schedule||[];
-  el.innerHTML=`
-    <div>Members: ${{members.length}} (${{active}} active)</div>
-    <div>Scheduled days: ${{sched.length}}</div>
-    <div>Recording: ${{s.record_enabled?"On":"Off"}}</div>
-    <div>Replay: ${{s.replay_enabled?"On":"Off"}}</div>`;
-}}
-
-// ── Hangup ─────────────────────────────────────────────────────────────────
 async function renderHangup(){{
   const ctl=document.getElementById("hangup-controls");
   if(!ctl)return;
   const r=await fetch("/api/live-calls",{{credentials:"include"}}).then(x=>x.json()).catch(()=>({{calls:[]}}));
   const calls=r.calls||[];
-  if(!calls.length){{ctl.innerHTML='<div class="empty-state">No active calls</div>';return;}}
+  if(!calls.length){{ctl.innerHTML='<p style="color:var(--text3);font-size:.82rem">No active calls.</p>';return;}}
   const conn=calls.filter(c=>c.status==="connected").length;
   const ring=calls.filter(c=>c.status==="dialing").length;
-  let html=`<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-    <button class="btn btn-danger" style="flex:1" onclick="hupAll(false)">Hang Up All (${{calls.length}})</button>
-    <button class="btn btn-danger" style="flex:1;background:rgba(240,136,62,.1);color:var(--orange);border-color:rgba(240,136,62,.2)" onclick="hupAll(true)">Hang Up + Block All</button>
-  </div>
-  <div style="font-size:11px;color:var(--t3);margin-bottom:8px">${{conn}} connected · ${{ring}} ringing</div>`;
+  let html=`<div class="hup-all-row">
+    <button class="btn-hup-all" onclick="hupAll(false)">🔴 Hang Up All (${{calls.length}})</button>
+    <button class="btn-hup-blk" onclick="hupAll(true)">🚫 Hang Up + Block All</button>
+  </div><p style="font-size:.71rem;color:var(--text3);margin-bottom:.45rem">${{conn}} connected · ${{ring}} ringing</p>`;
   html+=calls.map(c=>{{
-    const sm=STATUS_MAP[c.status]||{{color:"var(--t3)",label:c.status}};
-    return `<div class="live-call-row">
-      <div class="call-status-dot" style="background:${{sm.color}}"></div>
-      <span style="font-weight:500">${{c.number}}</span>
-      ${{c.name?`<span style="color:var(--t2);font-size:12px"> · ${{c.name}}</span>`:""}}
-      <span style="color:${{sm.color}};font-size:11px">${{sm.label}}</span>
-      ${{c.blocked?'<span style="color:var(--orange);font-size:11px">· Blocked</span>':""}}
-      <div class="hup-actions">
-        <button class="icon-btn" onclick="hupOne('${{c.uuid}}',false)">Hang up</button>
-        <button class="icon-btn danger" onclick="hupOne('${{c.uuid}}',true)">+ Block</button>
-      </div>
-    </div>`;
+    const color=c.status==="connected"?"var(--green)":"var(--yellow)";
+    return `<div class="live-row">
+      <div><span style="font-weight:600">${{c.number}}</span>
+      ${{c.name?`<span style="color:var(--text2);font-size:.76rem"> — ${{c.name}}</span>`:''}}<span style="color:${{color}};font-size:.7rem;margin-left:.3rem">● ${{c.status==="connected"?"Connected":"Ringing"}}</span>
+      ${{c.blocked?'<span style="color:var(--orange);font-size:.7rem"> · Blocked</span>':''}}</div>
+      <div class="live-acts">
+        <button class="btn-hup" onclick="hupOne('${{c.uuid}}',false)">Hang Up</button>
+        <button class="btn-hup-b" onclick="hupOne('${{c.uuid}}',true)">+ Block</button>
+      </div></div>`;
   }}).join("");
   ctl.innerHTML=html;
 }}
-
 async function hupAll(block){{
-  if(!confirm(block?"Hang up all and block from calling back?":"Hang up all active calls?"))return;
+  if(!confirm(block?"Hang up all and block?":"Hang up all?"))return;
   const r=await api("/hangup/all",{{block}});
-  if(r.ok){{toast(`Hung up ${{r.hung_up.length}} call(s)`);setTimeout(renderHangup,1500);}}
-  else toast("Failed to hang up");
+  if(r.ok){{toast(`Hung up ${{r.hung_up.length}}`);setTimeout(renderHangup,1500);}}
+  else toast("Failed");
 }}
 async function hupOne(uuid,block){{
-  if(!confirm(block?"Hang up and block from calling back this session?":"Hang up this person?"))return;
+  if(!confirm(block?"Hang up and block?":"Hang up?"))return;
   const r=await api("/hangup/one",{{uuid,block}});
-  if(r.ok){{toast(block?"Hung up and blocked":"Hung up");setTimeout(renderHangup,1500);}}
+  if(r.ok){{toast(block?"Hung up + blocked":"Hung up");setTimeout(renderHangup,1500);}}
   else toast("Failed");
 }}
 
-// ── Actions ────────────────────────────────────────────────────────────────
 async function triggerConference(){{
   const btn=document.getElementById("trigger-btn");
-  btn.disabled=true;
-  btn.innerHTML='<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="animation:pulse 1s infinite"><circle cx="8" cy="8" r="7"/></svg> Starting…';
+  btn.disabled=true;btn.innerHTML='<span class="live-dot"></span>Starting…';
   const r=await api("/trigger");
-  if(!r.ok){{toast("Already running — use Force Stop if stuck");btn.disabled=false;btn.innerHTML='<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.472v9.056L12.44 8 6 3.472z"/></svg> Start Conference Now';}}
+  if(!r.ok){{toast("Already running");btn.disabled=false;btn.innerHTML="▶&nbsp; Start Conference Now";}}
   else{{toast("Conference started!");setTimeout(refresh,2000);}}
 }}
 async function stopConference(){{
-  if(!confirm("Force-stop the conference? This resets the display only."))return;
+  if(!confirm("Force-stop?"))return;
   await api("/trigger/stop");toast("Stopped");refresh();
 }}
 async function addNumber(){{
@@ -1859,30 +1447,29 @@ async function addNumber(){{
   const name=document.getElementById("new-name").value.trim();
   if(!num)return;
   const r=await api("/numbers/add",{{number:num,name}});
-  if(r.ok){{document.getElementById("new-num").value="";document.getElementById("new-name").value="";renderMembers(r.members);toast("Member added");}}
+  if(r.ok){{document.getElementById("new-num").value="";document.getElementById("new-name").value="";renderMembers(r.members);toast("Added");}}
   else toast("Invalid number");
 }}
 async function removeMember(n){{if(!confirm(`Remove ${{n}}?`))return;const r=await api("/numbers/remove",{{number:n}});if(r.ok){{renderMembers(r.members);toast("Removed");}}}}
 async function togglePause(n,p){{const r=await api(p?"/numbers/unpause":"/numbers/pause",{{number:n}});if(r.ok){{renderMembers(r.members);toast(p?"Resumed":"Paused");}}}}
 async function saveName(n){{const name=document.getElementById(`nm-${{n}}`).value.trim();const r=await api("/numbers/setname",{{number:n,name}});if(r.ok){{renderMembers(r.members);toast("Saved");}}}}
-async function setDay(day){{const s=SS[day];const h24=to24(s);const t=`${{String(h24).padStart(2,"00")}}:${{String(s.m).padStart(2,"00")}}`;const r=await api("/schedule/set-day",{{day,time:t}});if(r.ok){{renderSchedule(r.schedule);toast("Schedule saved!");}}}}
-async function clearDay(day){{if(!confirm("Remove schedule for this day?"))return;const r=await api("/schedule/clear-day",{{day}});if(r.ok){{renderSchedule(r.schedule);toast("Removed");}}}}
+async function setDay(day){{const s=SS[day];const h24=to24(s);const t=`${{String(h24).padStart(2,"00")}}:${{String(s.m).padStart(2,"00")}}`;const r=await api("/schedule/set-day",{{day,time:t}});if(r.ok){{renderSchedule(r.schedule);toast("Schedule set!");}}}}
+async function clearDay(day){{if(!confirm("Remove?"))return;const r=await api("/schedule/clear-day",{{day}});if(r.ok){{renderSchedule(r.schedule);toast("Removed");}}}}
 async function toggleSetting(key){{await api("/settings/toggle",{{key}});refresh();}}
 async function sheetsSync(){{
   toast("Syncing…",3000);
   const r=await api("/sheets/sync");
   if(r.members)renderMembers(r.members);
   renderSheets(r.msg||"",r.ok);
-  toast(r.ok?"Synced successfully":"Sync failed");
+  toast(r.ok?"Synced!":"Sync failed");
 }}
 
-// ── Test Mode ──────────────────────────────────────────────────────────────
 let testNumCount=1;
 function addTestNumber(){{
   const container=document.getElementById("test-numbers");
   const inp=document.createElement("input");
-  inp.className="admin-field";inp.type="tel";
-  inp.placeholder="Enter phone number e.g. 2025551234";
+  inp.className="admin-inp";inp.type="tel";
+  inp.placeholder="Number e.g. 2025551234";
   inp.id=`test-num-${{testNumCount++}}`;
   container.appendChild(inp);
 }}
@@ -1890,26 +1477,19 @@ async function runTest(){{
   const numbers=[];
   document.querySelectorAll('[id^="test-num-"]').forEach(inp=>{{if(inp.value.trim())numbers.push(inp.value.trim());}});
   if(!numbers.length){{toast("Enter at least one number");return;}}
-  if(!confirm(`Run test conference with:\n${{numbers.join("\n")}}\n\nReal members will NOT be called.`))return;
+  if(!confirm(`Test with: ${{numbers.join(", ")}}?\n\nReal members will NOT be called.`))return;
   const r=await api("/trigger/test",{{numbers}});
-  if(r.ok){{toast("Test conference started!");setTimeout(refresh,2000);showSection("dashboard");}}
+  if(r.ok){{toast("Test started!");setTimeout(refresh,2000);}}
   else toast("Error: "+(r.error||"failed"));
 }}
 
-// ── Refresh ────────────────────────────────────────────────────────────────
 async function refresh(){{
   try{{
     const s=await fetch("/api/state",{{credentials:"include"}}).then(r=>r.json());
-    renderLastRun(s);
-    renderMembers(s.members||[]);
-    renderSchedule(s.schedule||[]);
-    renderRec(s);renderAnn(s);
-    renderSheets("",true);
-    renderHangup();
-    renderSystemInfo(s);
+    renderLastRun(s);renderMembers(s.members||[]);renderSchedule(s.schedule||[]);
+    renderRec(s);renderAnn(s);renderSheets("",true);renderHangup();
   }}catch(e){{console.error("Refresh error",e);}}
 }}
-
 refresh();
 setInterval(()=>{{const b=document.getElementById("trigger-btn");if(b&&b.disabled)refresh();}},8000);
 if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{{}});
