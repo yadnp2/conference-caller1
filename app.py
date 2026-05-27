@@ -631,15 +631,14 @@ def event():
 @app.route("/conf-event", methods=["POST"])
 def conf_event():
     """Vonage fires this when someone actually enters or leaves the conference room."""
-    data   = request.get_json(silent=True) or {}
-    etype  = data.get("type", "")
-    member = data.get("body", {})
-    uuid   = member.get("channel", {}).get("id", "") or data.get("uuid","")
-    print(f"[conf-event] type={etype} uuid={uuid}", flush=True)
-    if etype == "conversation:member:joined":
-        # Someone just entered the conference room for real
+    raw  = request.get_data(as_text=True)
+    data = request.get_json(silent=True) or request.values.to_dict()
+    print(f"[conf-event] RAW: {raw[:300]}", flush=True)
+    etype = data.get("type","") or data.get("event","")
+    print(f"[conf-event] type={etype} keys={list(data.keys())}", flush=True)
+    if "joined" in etype.lower() or "member" in etype.lower():
         last_answer_time[0] = time.time()
-        print(f"[conf-event] Member joined conference room at {last_answer_time[0]:.1f}", flush=True)
+        print(f"[conf-event] Member joined at {last_answer_time[0]:.1f}", flush=True)
     return "OK", 200
 
 @app.route("/recording", methods=["GET","POST"])
