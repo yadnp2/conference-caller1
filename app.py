@@ -456,6 +456,7 @@ def start_conference():
                          "calls": []})
         call_map.clear()
     session_blocked.clear()
+    last_answer_time[0] = time.time()  # reset so quiet period waits from now
     numbers = get_active_numbers()
     with lock:
         last_run["pending"] = len(numbers)
@@ -473,10 +474,17 @@ def start_conference():
 # ── VONAGE WEBHOOKS ───────────────────────────────────────────────────────────
 
 def _conference_ncco():
-    ncco = {"action": "conversation", "name": CONFERENCE_NAME, "startOnEnter": True, "endOnExit": False}
+    ncco = {
+        "action":       "conversation",
+        "name":         CONFERENCE_NAME,
+        "startOnEnter": True,
+        "endOnExit":    False,
+        "eventUrl":     [f"{BASE_URL}/conf-event"],
+        "eventMethod":  "POST",
+    }
     if get_setting("record_enabled") == "true":
-        ncco["record"]    = True
-        ncco["eventUrl"]  = [f"{BASE_URL}/recording"]
+        ncco["record"]          = True
+        ncco["recordingEventUrl"] = [f"{BASE_URL}/recording"]
     return [ncco]
 
 @app.route("/answer", methods=["GET","POST"])
@@ -618,6 +626,20 @@ def event():
                     if prev not in FINAL:
                         last_run["pending"] = max(0, last_run["pending"] - 1)
                     threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
+    return "OK", 200
+
+@app.route("/conf-event", methods=["POST"])
+def conf_event():
+    """Vonage fires this when someone actually enters or leaves the conference room."""
+    data   = request.get_json(silent=True) or {}
+    etype  = data.get("type", "")
+    member = data.get("body", {})
+    uuid   = member.get("channel", {}).get("id", "") or data.get("uuid","")
+    print(f"[conf-event] type={etype} uuid={uuid}", flush=True)
+    if etype == "conversation:member:joined":
+        # Someone just entered the conference room for real
+        last_answer_time[0] = time.time()
+        print(f"[conf-event] Member joined conference room at {last_answer_time[0]:.1f}", flush=True)
     return "OK", 200
 
 @app.route("/recording", methods=["GET","POST"])
@@ -868,6 +890,7 @@ def trigger_test():
             })
             call_map.clear()
         session_blocked.clear()
+        last_answer_time[0] = time.time()  # reset so quiet period waits from now
         with lock:
             last_run["pending"] = len(numbers)
         print(f"[test] Starting test conference with {numbers}", flush=True)
