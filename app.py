@@ -357,6 +357,7 @@ def _play_summary():
     """Wait until all outbound calls settle, then announce who joined."""
     MAX_WAIT = 120
     waited   = 0
+    print(f"[summary] Starting — will wait up to {MAX_WAIT}s for calls to settle", flush=True)
     while waited < MAX_WAIT:
         time.sleep(1)
         waited += 1
@@ -364,18 +365,28 @@ def _play_summary():
             still_dialing = last_run.get("running", False)
             pending       = last_run.get("pending", 0)
         if still_dialing or pending > 0:
+            if waited % 10 == 0:
+                print(f"[summary] Still waiting — running={still_dialing} pending={pending} waited={waited}s", flush=True)
             continue
         break
 
+    print(f"[summary] Settled after {waited}s", flush=True)
+
     with lock:
         if last_run.get("summary_fired"):
+            print("[summary] Already fired — skipping", flush=True)
             return
         last_run["summary_fired"] = True
-        names = [e["name"] for e in last_run["calls"] if e.get("status")=="connected" and e.get("name")]
+        calls = list(last_run["calls"])
+        names = [e["name"] for e in calls if e.get("status")=="connected" and e.get("name")]
         uuids = [u for u,e in call_map.items() if e.get("status")=="connected"]
 
+    print(f"[summary] calls={len(calls)} connected names={names} uuids={uuids}", flush=True)
+    for e in calls:
+        print(f"[summary]   call: number={e.get('number')} status={e.get('status')} name={e.get('name')}", flush=True)
+
     if not names or not uuids:
-        print("Summary: no connected participants.")
+        print(f"[summary] No connected participants — names={names} uuids={uuids}", flush=True)
         return
 
     if len(names) == 1:
