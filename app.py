@@ -387,9 +387,10 @@ def _speak_polly(text, uuids):
 
         # Play the MP3 into each connected call leg
         mp3_url = f"{BASE_URL}/recordings/announcement"
+        from vonage_voice.models import AudioStreamOptions
         for u in uuids:
             try:
-                client.voice.play_audio_into_call(u, [mp3_url])
+                client.voice.play_audio_into_call(u, AudioStreamOptions(stream_url=[mp3_url], level=0))
                 print(f"[polly] Playing into {u}", flush=True)
             except Exception as e:
                 print(f"[polly] Play error {u}: {e}", flush=True)
