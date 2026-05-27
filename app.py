@@ -358,7 +358,7 @@ def _play_summary():
     """Wait until all outbound calls settle AND no new /answer calls for 3 seconds,
     then announce who joined. This ensures everyone is actually in the conference room."""
     MAX_WAIT   = 120
-    QUIET_SECS = 3    # seconds of no new joins before playing
+    QUIET_SECS = 8    # seconds of no new joins before playing (allow hold message to finish)
     waited     = 0
     print(f"[summary] Starting — waiting for all calls to settle", flush=True)
 
