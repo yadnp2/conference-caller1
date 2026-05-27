@@ -512,10 +512,12 @@ def answer():
     is_outbound = in_call_map or (clean_to and clean_to != vonage_num and is_approved_member(clean_to))
 
     if is_outbound:
-        # Record when this person actually entered the conference room
+        # This is the real moment — person is entering the conference room
         last_answer_time[0] = time.time()
-        print(f"[answer] outbound joined conference at {last_answer_time[0]:.1f}", flush=True)
-        # Outbound call answered — just join the conference
+        with lock:
+            if uuid in call_map:
+                last_run["pending"] = max(0, last_run["pending"] - 1)
+        print(f"[answer] outbound entering conference, pending now={last_run.get('pending',0)}", flush=True)
         return jsonify([{"action": "talk", "style": 2, "text": "Please hold, joining you to the Shmiras HaLashon conference."}, *_conference_ncco()])
 
     # Inbound call — check if member is approved
@@ -606,39 +608,49 @@ def event():
             if status == "answered":
                 entry["status"] = "connected"
                 last_run["conference_active"] = True
-                if prev not in FINAL:
-                    last_run["pending"] = max(0, last_run["pending"] - 1)
+                # Note: pending is decremented in /answer webhook, not here,
+                # because /answer fires when person actually enters the conference room
                 threading.Thread(target=update_log, args=(log_id,"connected"), daemon=True).start()
             elif status == "machine":
                 entry["status"] = "voicemail"
                 if prev not in FINAL:
                     last_run["pending"] = max(0, last_run["pending"] - 1)
+                    print(f"[event] voicemail detected, pending now={last_run['pending']}", flush=True)
                 threading.Thread(target=update_log, args=(log_id,"voicemail"), daemon=True).start()
             elif status in ("completed","busy","failed","rejected","unanswered","timeout","cancelled"):
                 if entry["status"] == "connected":
+                    # Person was connected and now left — update conference_active
                     entry["status"] = status
                     still = any(e.get("status")=="connected" and u!=uuid for u,e in call_map.items())
                     last_run["conference_active"] = still
                     print(f"[event] {uuid} completed, conference_active={still}", flush=True)
                     threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
+                elif entry["status"] == "dialing":
+                    # Person never answered — decrement pending here since /answer never fired
+                    entry["status"] = status
+                    last_run["pending"] = max(0, last_run["pending"] - 1)
+                    print(f"[event] {uuid} never answered ({status}), pending now={last_run['pending']}", flush=True)
+                    threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
                 else:
                     entry["status"] = status
-                    if prev not in FINAL:
-                        last_run["pending"] = max(0, last_run["pending"] - 1)
                     threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
     return "OK", 200
 
 @app.route("/conf-event", methods=["POST"])
 def conf_event():
-    """Vonage fires this when someone actually enters or leaves the conference room."""
-    raw  = request.get_data(as_text=True)
-    data = request.get_json(silent=True) or request.values.to_dict()
-    print(f"[conf-event] RAW: {raw[:300]}", flush=True)
-    etype = data.get("type","") or data.get("event","")
-    print(f"[conf-event] type={etype} keys={list(data.keys())}", flush=True)
-    if "joined" in etype.lower() or "member" in etype.lower():
-        last_answer_time[0] = time.time()
-        print(f"[conf-event] Member joined at {last_answer_time[0]:.1f}", flush=True)
+    """Vonage sends recording events here from the conference NCCO."""
+    data = request.get_json(silent=True) or {}
+    url  = data.get("recording_url") or data.get("url")
+    if url:
+        # This is a recording event - handle it
+        date_str = datetime.now(EASTERN).strftime("%A %B %-d at %-I:%M %p ET")
+        size = int(data.get("size", 0))
+        save_recording_meta(url, date_str, size)
+        print(f"[conf-event/recording] saved url={url[:60]}... size={size}", flush=True)
+        def _dl():
+            ok = download_recording(url)
+            print(f"[conf-event/recording] download {'OK' if ok else 'FAILED'}", flush=True)
+        threading.Thread(target=_dl, daemon=True).start()
     return "OK", 200
 
 @app.route("/recording", methods=["GET","POST"])
