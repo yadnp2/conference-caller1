@@ -76,8 +76,9 @@ def init_db():
                     PRIMARY KEY (day, hour, minute, fired_date)
                 );
             """)
-            for key in ('record_enabled', 'replay_enabled', 'announcements_enabled'):
-                cur.execute("INSERT INTO settings (key,value) VALUES (%s,'true') ON CONFLICT DO NOTHING", (key,))
+            for key in ('record_enabled', 'replay_enabled', 'announcements_enabled', 'sponsor_enabled'):
+                cur.execute("INSERT INTO settings (key,value) VALUES (%s,'false') ON CONFLICT DO NOTHING", (key,))
+            cur.execute("INSERT INTO settings (key,value) VALUES ('sponsor_text','') ON CONFLICT DO NOTHING")
         conn.commit()
     print("DB initialized.")
 
@@ -775,7 +776,7 @@ def schedule_clear_day():
 def settings_toggle():
     d   = request.json or {}
     key = d.get("key","")
-    if key not in ("record_enabled","replay_enabled","announcements_enabled"):
+    if key not in ("record_enabled","replay_enabled","announcements_enabled","sponsor_enabled"):
         return jsonify({"ok": False}), 400
     new = "false" if get_setting(key) == "true" else "true"
     set_setting(key, new)
@@ -790,6 +791,14 @@ def sheets_sync():
     return jsonify({"ok": ok, "msg": msg, "members": get_members()})
 
 # ── TRIGGER ───────────────────────────────────────────────────────────────────
+
+@app.route("/sponsor/save", methods=["POST"])
+@login_required
+def sponsor_save():
+    d = request.json or {}
+    text = d.get("text", "").strip()
+    set_setting("sponsor_text", text)
+    return jsonify({"ok": True, "text": text})
 
 @app.route("/trigger", methods=["POST"])
 @login_required
@@ -890,6 +899,8 @@ def api_state():
         "record_enabled":        get_setting("record_enabled") == "true",
         "replay_enabled":        get_setting("replay_enabled") == "true",
         "announcements_enabled": get_setting("announcements_enabled") == "true",
+        "sponsor_enabled":       get_setting("sponsor_enabled") == "true",
+        "sponsor_text":          get_setting("sponsor_text", ""),
         "rec_meta":              rec_meta,
         "rec_exists":            rec_exists,
     })
@@ -1213,6 +1224,11 @@ def status():
   </div>
 
   <div class='card'>
+    <div class='card-hdr'><span class='card-title'>Sponsor Message</span></div>
+    <div id='sponsor-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+  </div>
+
+  <div class='card'>
     <div class='card-hdr'><span class='card-title'>Google Sheets Sync</span></div>
     <p style='font-size:.77rem;color:var(--text2);margin-bottom:.7rem'>Syncs automatically on startup. Column A = name, Column B = number.</p>
     <div id='sheets-section'></div>
@@ -1386,6 +1402,35 @@ function renderAnn(s){{
   const on=s.announcements_enabled;
   el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('announcements_enabled')">${{on?'Announcements: On':'Announcements: Off'}}</button><span class="thint">${{on?'Plays who joined after all calls settle.':'Enable.'}}</span></div>`;
 }}
+function renderSponsor(s){{
+  const el=document.getElementById("sponsor-section");
+  if(!el)return;
+  const on=s.sponsor_enabled;
+  const txt=s.sponsor_text||"";
+  el.innerHTML=`<div class="toggle-row">
+    <button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('sponsor_enabled')">${{on?'Sponsor: On':'Sponsor: Off'}}</button>
+    <span class="thint">${{on?'Sponsor message plays after the welcome announcement.':'Enable to add a sponsor message.'}}</span>
+  </div>
+  <div style="margin-top:.75rem">
+    <textarea id="sponsor-text" rows="3"
+      style="width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);
+             border-radius:var(--rs);padding:.6rem .75rem;font-size:.82rem;font-family:Inter,sans-serif;
+             resize:vertical;line-height:1.5"
+      placeholder="e.g. Today's conference is sponsored by Acme Corp.">${{txt}}</textarea>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
+      <button class="btn btn-save" style="padding:.38rem .9rem;font-size:.8rem" onclick="saveSponsor()">Save Message</button>
+      <span style="font-size:.73rem;color:var(--text3)">Played after the welcome announcement</span>
+    </div>
+  </div>`;
+}}
+
+async function saveSponsor(){{
+  const text=document.getElementById("sponsor-text").value.trim();
+  const r=await api("/sponsor/save",{{text}});
+  if(r.ok)toast("Sponsor message saved!");
+  else toast("Failed to save");
+}}
+
 function renderSheets(msg,ok){{
   const el=document.getElementById("sheets-section");
   if(!el)return;
@@ -1487,7 +1532,7 @@ async function refresh(){{
   try{{
     const s=await fetch("/api/state",{{credentials:"include"}}).then(r=>r.json());
     renderLastRun(s);renderMembers(s.members||[]);renderSchedule(s.schedule||[]);
-    renderRec(s);renderAnn(s);renderSheets("",true);renderHangup();
+    renderRec(s);renderAnn(s);renderSponsor(s);renderSheets("",true);renderHangup();
   }}catch(e){{console.error("Refresh error",e);}}
 }}
 refresh();
