@@ -352,6 +352,7 @@ def download_recording(url):
 lock            = threading.Lock()
 call_map        = {}   # uuid → {number, name, status, log_id}
 session_blocked = set()
+answered_uuids  = set()  # tracks which UUIDs have decremented pending (prevents race condition)
 last_run        = {"time": None, "calls": [], "running": False,
                    "conference_active": False, "pending": 0, "summary_fired": False}
 last_answer_time = [0.0]  # timestamp of last /answer webhook for outbound call
@@ -503,6 +504,7 @@ def start_conference():
                          "calls": []})
         call_map.clear()
     session_blocked.clear()
+    answered_uuids.clear()
     last_answer_time[0] = time.time()  # reset so quiet period waits from now
     numbers = get_active_numbers()
     with lock:
@@ -584,9 +586,12 @@ def answer():
         # This is the real moment — person is entering the conference room
         last_answer_time[0] = time.time()
         with lock:
-            if uuid in call_map:
+            if uuid in call_map and uuid not in answered_uuids:
+                answered_uuids.add(uuid)
                 last_run["pending"] = max(0, last_run["pending"] - 1)
-        print(f"[answer] outbound entering conference, pending now={last_run.get('pending',0)}", flush=True)
+                print(f"[answer] outbound entering conference, pending now={last_run['pending']}", flush=True)
+            else:
+                print(f"[answer] outbound duplicate /answer for {uuid} — ignoring", flush=True)
         return jsonify([_polly_talk("Please hold, joining you to the Shmiras HaLashon conference."), *_conference_ncco()])
 
     # Inbound call — check if member is approved
@@ -696,9 +701,10 @@ def event():
                     threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
                 elif entry["status"] == "dialing":
                     # Person never answered — decrement pending here since /answer never fired
-                    entry["status"] = status
-                    last_run["pending"] = max(0, last_run["pending"] - 1)
-                    print(f"[event] {uuid} never answered ({status}), pending now={last_run['pending']}", flush=True)
+                    if uuid not in answered_uuids:
+                        entry["status"] = status
+                        last_run["pending"] = max(0, last_run["pending"] - 1)
+                        print(f"[event] {uuid} never answered ({status}), pending now={last_run['pending']}", flush=True)
                     threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
                 else:
                     entry["status"] = status
@@ -984,6 +990,7 @@ def trigger_test():
             })
             call_map.clear()
         session_blocked.clear()
+        answered_uuids.clear()
         last_answer_time[0] = time.time()  # reset so quiet period waits from now
         with lock:
             last_run["pending"] = len(numbers)
