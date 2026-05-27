@@ -1,4 +1,10 @@
 import vonage, threading, time, os, json, functools, uuid as _uuid, requests, gspread, psycopg2, schedule as _schedule
+try:
+    import boto3
+    _polly = boto3.client('polly', region_name=os.environ.get('AWS_DEFAULT_REGION','us-east-1'))
+except Exception as _e:
+    _polly = None
+    print(f'[polly] boto3 not available: {_e}', flush=True)
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -354,6 +360,48 @@ FINAL = {"connected","voicemail","completed","busy","cancelled","failed","reject
 
 # ── ANNOUNCEMENT ──────────────────────────────────────────────────────────────
 
+def _speak_polly(text, uuids):
+    """Use Amazon Polly to generate MP3 then play into conference.
+    Falls back to Vonage TTS if Polly fails."""
+    if not _polly:
+        print("[polly] Not available — falling back to Vonage TTS", flush=True)
+        for u in uuids:
+            try:
+                from vonage_voice.models import TtsStreamOptions
+                client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US", style=2, level=1.0))
+            except Exception as e:
+                print(f"[polly] Vonage TTS fallback error {u}: {e}", flush=True)
+        return
+
+    try:
+        resp = _polly.synthesize_speech(
+            Text=text,
+            OutputFormat="mp3",
+            VoiceId="Joanna",        # Neural US English female voice
+            Engine="neural",
+        )
+        mp3_path = os.path.join(RECORDINGS_DIR, "announcement.mp3")
+        with open(mp3_path, "wb") as f:
+            f.write(resp["AudioStream"].read())
+        print(f"[polly] Generated MP3 for: {text[:60]}...", flush=True)
+
+        # Play the MP3 into each connected call leg
+        mp3_url = f"{BASE_URL}/recordings/announcement"
+        for u in uuids:
+            try:
+                client.voice.play_audio_into_call(u, [mp3_url])
+                print(f"[polly] Playing into {u}", flush=True)
+            except Exception as e:
+                print(f"[polly] Play error {u}: {e}", flush=True)
+    except Exception as e:
+        print(f"[polly] Error: {e} — falling back to Vonage TTS", flush=True)
+        for u in uuids:
+            try:
+                from vonage_voice.models import TtsStreamOptions
+                client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US", style=2, level=1.0))
+            except Exception as e2:
+                print(f"[polly] Vonage TTS fallback error {u}: {e2}", flush=True)
+
 def _play_summary():
     """Wait until all outbound calls settle AND no new /answer calls for 3 seconds,
     then announce who joined. This ensures everyone is actually in the conference room."""
@@ -404,6 +452,8 @@ def _play_summary():
         print(f"[summary] No connected participants — skipping", flush=True)
         return
 
+    # Build announcement text
+
     if len(names) == 1:
         text = f"Welcome. {names[0]} has joined the call."
     elif len(names) == 2:
@@ -418,11 +468,7 @@ def _play_summary():
             text += f" {sponsor}"
 
     print(f"Summary: {text}", flush=True)
-    for u in uuids:
-        try:
-            client.voice.play_tts_into_call(u, TtsStreamOptions(text=text, language="en-US", style=2, level=1.0))
-        except Exception as e:
-            print(f"Summary TTS error {u}: {e}")
+    _speak_polly(text, uuids)
 
 # ── DIAL OUT ──────────────────────────────────────────────────────────────────
 
@@ -671,6 +717,13 @@ def recording_webhook():
             print(f"[recording] download {'OK' if ok else 'FAILED'}", flush=True)
         threading.Thread(target=_dl, daemon=True).start()
     return "OK", 200
+
+@app.route("/recordings/announcement")
+def recording_announcement():
+    path = os.path.join(RECORDINGS_DIR, "announcement.mp3")
+    if not os.path.exists(path):
+        return "No announcement", 404
+    return send_from_directory(RECORDINGS_DIR, "announcement.mp3", mimetype="audio/mpeg")
 
 @app.route("/recordings/audio")
 def recording_audio():
