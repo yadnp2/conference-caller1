@@ -670,6 +670,16 @@ def event():
     status = data.get("status","")
     if uuid or status:
         print(f"[event] uuid={uuid} status={status}", flush=True)
+    # If UUID not in call_map yet, wait briefly — Vonage sometimes fires events
+    # before our dial() function finishes adding the UUID to call_map
+    if uuid and status in ("answered","machine") and uuid not in call_map:
+        for _ in range(10):
+            time.sleep(0.3)
+            if uuid in call_map:
+                break
+        if uuid not in call_map:
+            print(f"[event] WARNING: uuid={uuid} not in call_map after waiting — status={status}", flush=True)
+
     with lock:
         if uuid in call_map:
             entry   = call_map[uuid]
