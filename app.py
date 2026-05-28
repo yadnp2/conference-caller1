@@ -487,14 +487,28 @@ def dial(number):
             event_url=[f"{BASE_URL}/event"],
             machine_detection="hangup",
         ))
-        uuid   = getattr(resp, "uuid", None)
-        log_id = log_call(number, name, "dialing", uuid=uuid)
-        entry  = {"number": number, "name": name, "status": "dialing", "uuid": uuid, "log_id": log_id}
+        uuid = getattr(resp, "uuid", None)
+        print(f"[dial] Created call to {number} uuid={uuid}", flush=True)
+        # Add to call_map IMMEDIATELY before any DB operations
+        # so event webhooks can find it even if DB is slow
+        entry = {"number": number, "name": name, "status": "dialing", "uuid": uuid, "log_id": None}
         with lock:
             if uuid: call_map[uuid] = entry
             last_run["calls"].append(entry)
+        # DB log can happen after — failure here won't break call tracking
+        try:
+            log_id = log_call(number, name, "dialing", uuid=uuid)
+            if uuid and log_id:
+                with lock:
+                    if uuid in call_map:
+                        call_map[uuid]["log_id"] = log_id
+        except Exception as db_err:
+            print(f"[dial] DB log error (non-fatal): {db_err}", flush=True)
     except Exception as e:
-        log_call(number, name, "error", error=str(e))
+        print(f"[dial] Failed to create call to {number}: {e}", flush=True)
+        try:
+            log_call(number, name, "error", error=str(e))
+        except: pass
         with lock:
             last_run["calls"].append({"number": number, "name": name, "status": "error", "error": str(e)})
 
@@ -525,33 +539,49 @@ def start_conference():
 
 # ── VONAGE WEBHOOKS ───────────────────────────────────────────────────────────
 
-def _polly_talk(text):
-    """Generate a Polly MP3 and return a stream NCCO action.
-    Falls back to Vonage talk action if Polly unavailable."""
+# Pre-generated Polly MP3 cache — generated once on startup
+_polly_cache = {}
+
+def _pregenerate_polly():
+    """Pre-generate all system message MP3s on startup so they're ready for calls."""
     if not _polly:
-        return {"action": "talk", "style": 2, "text": text}
-    try:
-        resp = _polly.synthesize_speech(
-            Text=text,
-            OutputFormat="mp3",
-            VoiceId="Ruth",
-            Engine="neural",
-        )
-        # Read audio data first, then save
-        audio_data = resp["AudioStream"].read()
-        if not audio_data:
-            print(f"[polly_talk] WARNING: Empty audio data from Polly for: {text[:50]}", flush=True)
-            return {"action": "talk", "style": 2, "text": text}
-        fname = f"tts_{abs(hash(text))}.mp3"
+        return
+    messages = [
+        "Please hold, joining you to the Shmiras HaLashon conference.",
+        "Press 1 to join the Shmiras HaLashon conference.",
+        "Goodbye.",
+        "Sorry, calls with a hidden number cannot join. Goodbye.",
+        "Sorry, your number is not registered for this conference. Goodbye.",
+        "You cannot join this conference session. Goodbye.",
+        "Recording complete. Goodbye.",
+    ]
+    for text in messages:
+        try:
+            resp = _polly.synthesize_speech(
+                Text=text, OutputFormat="mp3", VoiceId="Ruth", Engine="neural"
+            )
+            audio_data = resp["AudioStream"].read()
+            if audio_data:
+                fname = f"tts_{abs(hash(text))}.mp3"
+                fpath = os.path.join(RECORDINGS_DIR, fname)
+                with open(fpath, "wb") as f:
+                    f.write(audio_data)
+                _polly_cache[text] = fname
+                print(f"[polly] Pre-generated: {text[:50]} ({len(audio_data)} bytes)", flush=True)
+            else:
+                print(f"[polly] Empty audio for: {text[:50]}", flush=True)
+        except Exception as e:
+            print(f"[polly] Pre-generate error: {e}", flush=True)
+
+def _polly_talk(text):
+    """Return NCCO action using pre-generated Polly MP3 if available, else Vonage TTS."""
+    if text in _polly_cache:
+        fname = _polly_cache[text]
         fpath = os.path.join(RECORDINGS_DIR, fname)
-        with open(fpath, "wb") as f:
-            f.write(audio_data)
-        size = os.path.getsize(fpath)
-        print(f"[polly_talk] Generated {size} bytes for: {text[:50]}", flush=True)
-        return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 1}
-    except Exception as e:
-        print(f"[polly_talk] Error: {e} — falling back to Vonage TTS", flush=True)
-        return {"action": "talk", "style": 2, "text": text}
+        if os.path.exists(fpath) and os.path.getsize(fpath) > 0:
+            return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 1}
+    # Fallback to Vonage TTS
+    return {"action": "talk", "style": 2, "text": text}
 
 def _conference_ncco():
     ncco = {
@@ -1815,6 +1845,7 @@ init_db()
 threading.Thread(target=run_scheduler, daemon=True).start()
 threading.Thread(target=_startup_sync, daemon=True).start()
 threading.Thread(target=_startup_restore_recording, daemon=True).start()
+threading.Thread(target=_pregenerate_polly, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
