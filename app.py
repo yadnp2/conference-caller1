@@ -490,12 +490,16 @@ def dial(number):
         uuid = getattr(resp, "uuid", None)
         print(f"[dial] Created call to {number} uuid={uuid}", flush=True)
         # Add to call_map IMMEDIATELY before any DB operations
-        # so event webhooks can find it even if DB is slow
         entry = {"number": number, "name": name, "status": "dialing", "uuid": uuid, "log_id": None}
-        with lock:
-            if uuid: call_map[uuid] = entry
-            last_run["calls"].append(entry)
-        # DB log can happen after — failure here won't break call tracking
+        try:
+            with lock:
+                if uuid:
+                    call_map[uuid] = entry
+                    print(f"[dial] Added {uuid} to call_map (size now {len(call_map)})", flush=True)
+                last_run["calls"].append(entry)
+        except Exception as lock_err:
+            print(f"[dial] CRITICAL lock error: {lock_err}", flush=True)
+        # DB log after — non-fatal
         try:
             log_id = log_call(number, name, "dialing", uuid=uuid)
             if uuid and log_id:
@@ -1845,7 +1849,11 @@ init_db()
 threading.Thread(target=run_scheduler, daemon=True).start()
 threading.Thread(target=_startup_sync, daemon=True).start()
 threading.Thread(target=_startup_restore_recording, daemon=True).start()
-threading.Thread(target=_pregenerate_polly, daemon=True).start()
+# Pre-generate Polly files synchronously so they're ready before any calls
+try:
+    _pregenerate_polly()
+except Exception as e:
+    print(f"[startup] Polly pre-generate error: {e}", flush=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
