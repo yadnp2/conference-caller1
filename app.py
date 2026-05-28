@@ -422,10 +422,11 @@ def _play_summary():
         with lock:
             still_running = last_run.get("running", False)
             pending       = last_run.get("pending", 0)
+        if waited % 10 == 0:
+            print(f"[summary] Waiting — running={still_running} pending={pending} waited={waited}s", flush=True)
         if still_running or pending > 0:
-            if waited % 10 == 0:
-                print(f"[summary] Waiting — running={still_running} pending={pending} waited={waited}s", flush=True)
             continue
+        print(f"[summary] Settled! running={still_running} pending={pending} after {waited}s", flush=True)
         break
 
     print(f"[summary] All calls settled after {waited}s — now waiting for quiet period", flush=True)
@@ -494,7 +495,7 @@ def dial(number):
         # Add to call_map BEFORE acquiring lock so event handlers can find it immediately
         if uuid:
             call_map[uuid] = entry
-            print(f"[dial] Added {uuid} to call_map (size now {len(call_map)})", flush=True)
+            print(f"[dial] Added {uuid} to call_map (size now {len(call_map)}) keys={list(call_map.keys())}", flush=True)
         try:
             with lock:
                 last_run["calls"].append(entry)
@@ -525,6 +526,7 @@ def start_conference():
                          "summary_fired": False, "time": datetime.now(EASTERN).strftime("%A %b %d at %-I:%M %p %Z"),
                          "calls": []})
     # Clear AFTER releasing lock so dial() can add immediately
+    print(f"[start_conference] Clearing call_map (had {len(call_map)} entries)", flush=True)
     call_map.clear()
     session_blocked.clear()
     answered_uuids.clear()
@@ -725,13 +727,14 @@ def event():
     # before our dial() function finishes (especially on cold starts)
     # Wait for UUID to appear in call_map if not there yet
     if uuid and status in ("answered","machine") and uuid not in call_map:
+        print(f"[event] uuid={uuid} not in call_map. call_map has {len(call_map)} entries: {list(call_map.keys())[:3]}", flush=True)
         for i in range(60):  # wait up to 15s
             time.sleep(0.25)
             if uuid in call_map:
                 print(f"[event] uuid={uuid} found after {(i+1)*0.25:.2f}s", flush=True)
                 break
         else:
-            # Still not found — create a minimal entry so we can track it
+            # Still not found — create entry and decrement pending under lock
             if uuid and status == "answered":
                 print(f"[event] Creating emergency entry for {uuid}", flush=True)
                 emergency_entry = {"number": "unknown", "name": "", "status": "dialing",
@@ -739,6 +742,10 @@ def event():
                 call_map[uuid] = emergency_entry
                 with lock:
                     last_run["calls"].append(emergency_entry)
+                    if uuid not in answered_uuids:
+                        answered_uuids.add(uuid)
+                        last_run["pending"] = max(0, last_run["pending"] - 1)
+                        print(f"[event] Emergency: decremented pending to {last_run['pending']}", flush=True)
 
     with lock:
         if uuid in call_map:
