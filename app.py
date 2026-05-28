@@ -524,7 +524,8 @@ def start_conference():
         last_run.update({"running": True, "conference_active": False, "pending": 0,
                          "summary_fired": False, "time": datetime.now(EASTERN).strftime("%A %b %d at %-I:%M %p %Z"),
                          "calls": []})
-        call_map.clear()
+    # Clear AFTER releasing lock so dial() can add immediately
+    call_map.clear()
     session_blocked.clear()
     answered_uuids.clear()
     last_answer_time[0] = time.time()  # reset so quiet period waits from now
@@ -723,13 +724,21 @@ def event():
     # If UUID not in call_map yet, wait — Vonage sometimes fires events
     # before our dial() function finishes (especially on cold starts)
     # Wait for UUID to appear in call_map if not there yet
-    # (Vonage fires answered event before dial() adds UUID to call_map)
     if uuid and status in ("answered","machine") and uuid not in call_map:
-        for i in range(20):
+        for i in range(60):  # wait up to 15s
             time.sleep(0.25)
             if uuid in call_map:
                 print(f"[event] uuid={uuid} found after {(i+1)*0.25:.2f}s", flush=True)
                 break
+        else:
+            # Still not found — create a minimal entry so we can track it
+            if uuid and status == "answered":
+                print(f"[event] Creating emergency entry for {uuid}", flush=True)
+                emergency_entry = {"number": "unknown", "name": "", "status": "dialing",
+                                   "uuid": uuid, "log_id": None}
+                call_map[uuid] = emergency_entry
+                with lock:
+                    last_run["calls"].append(emergency_entry)
 
     with lock:
         if uuid in call_map:
@@ -818,10 +827,21 @@ def recording_announcement():
 
 @app.route("/recordings/tts/<fname>")
 def recording_tts(fname):
+    from flask import Response
+    # Sanitize filename
+    fname = os.path.basename(fname)
     path = os.path.join(RECORDINGS_DIR, fname)
     if not os.path.exists(path):
+        print(f"[tts] File not found: {path}", flush=True)
         return "Not found", 404
-    return send_from_directory(RECORDINGS_DIR, fname, mimetype="audio/mpeg")
+    size = os.path.getsize(path)
+    print(f"[tts] Serving {fname} ({size} bytes)", flush=True)
+    with open(path, "rb") as f:
+        data = f.read()
+    return Response(data, mimetype="audio/mpeg",
+                    headers={"Content-Length": str(len(data)),
+                             "Accept-Ranges": "bytes",
+                             "Cache-Control": "no-cache"})
 
 @app.route("/recordings/audio")
 def recording_audio():
@@ -1050,7 +1070,7 @@ def trigger_test():
                 "time": datetime.now(EASTERN).strftime("TEST — %A %b %d at %-I:%M %p %Z"),
                 "calls": []
             })
-            call_map.clear()
+        call_map.clear()
         session_blocked.clear()
         answered_uuids.clear()
         last_answer_time[0] = time.time()  # reset so quiet period waits from now
