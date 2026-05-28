@@ -375,14 +375,8 @@ def _speak_polly(text, uuids):
         return
 
     try:
-        # Wrap text in SSML for natural breathing and newscaster style
-        ssml = f"""<speak>
-            <amazon:domain name='news'>
-                <amazon:auto-breaths>
-                    {text}
-                </amazon:auto-breaths>
-            </amazon:domain>
-        </speak>"""
+        # Wrap text in SSML for newscaster style
+        ssml = f"<speak><amazon:domain name='news'>{text}</amazon:domain></speak>"
         resp = _polly.synthesize_speech(
             Text=ssml,
             TextType="ssml",
@@ -537,13 +531,7 @@ def _polly_talk(text):
     if not _polly:
         return {"action": "talk", "style": 2, "text": text}
     try:
-        ssml = f"""<speak>
-            <amazon:domain name='news'>
-                <amazon:auto-breaths>
-                    {text}
-                </amazon:auto-breaths>
-            </amazon:domain>
-        </speak>"""
+        ssml = f"<speak><amazon:domain name='news'>{text}</amazon:domain></speak>"
         resp = _polly.synthesize_speech(
             Text=ssml,
             TextType="ssml",
