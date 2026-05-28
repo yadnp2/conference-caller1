@@ -375,10 +375,19 @@ def _speak_polly(text, uuids):
         return
 
     try:
+        # Wrap text in SSML for natural breathing and newscaster style
+        ssml = f"""<speak>
+            <amazon:domain name='news'>
+                <amazon:auto-breaths>
+                    {text}
+                </amazon:auto-breaths>
+            </amazon:domain>
+        </speak>"""
         resp = _polly.synthesize_speech(
-            Text=text,
+            Text=ssml,
+            TextType="ssml",
             OutputFormat="mp3",
-            VoiceId="Ruth",          # Best neural US English female voice
+            VoiceId="Ruth",
             Engine="neural",
         )
         mp3_path = os.path.join(RECORDINGS_DIR, "announcement.mp3")
@@ -528,8 +537,16 @@ def _polly_talk(text):
     if not _polly:
         return {"action": "talk", "style": 2, "text": text}
     try:
+        ssml = f"""<speak>
+            <amazon:domain name='news'>
+                <amazon:auto-breaths>
+                    {text}
+                </amazon:auto-breaths>
+            </amazon:domain>
+        </speak>"""
         resp = _polly.synthesize_speech(
-            Text=text,
+            Text=ssml,
+            TextType="ssml",
             OutputFormat="mp3",
             VoiceId="Ruth",
             Engine="neural",
