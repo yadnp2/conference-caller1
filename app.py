@@ -81,6 +81,24 @@ def init_db():
                     fired_date DATE NOT NULL,
                     PRIMARY KEY (day, hour, minute, fired_date)
                 );
+                CREATE TABLE IF NOT EXISTS active_calls (
+                    uuid TEXT PRIMARY KEY,
+                    number TEXT,
+                    name TEXT,
+                    status TEXT DEFAULT 'dialing',
+                    log_id INT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS conference_state (
+                    id INT PRIMARY KEY DEFAULT 1,
+                    running BOOLEAN DEFAULT FALSE,
+                    conference_active BOOLEAN DEFAULT FALSE,
+                    pending INT DEFAULT 0,
+                    summary_fired BOOLEAN DEFAULT FALSE,
+                    run_time TEXT DEFAULT \'\',
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                INSERT INTO conference_state(id) VALUES(1) ON CONFLICT DO NOTHING;
             """)
             for key in ('record_enabled', 'replay_enabled', 'announcements_enabled'):
                 cur.execute("INSERT INTO settings (key,value) VALUES (%s,'true') ON CONFLICT DO NOTHING", (key,))
@@ -422,6 +440,14 @@ def _play_summary():
         with lock:
             still_running = last_run.get("running", False)
             pending       = last_run.get("pending", 0)
+        # Also check DB pending in case state was lost due to restart
+        if pending > 0:
+            db_pending = db_get_pending()
+            if db_pending < pending:
+                print(f"[summary] DB pending={db_pending} < memory pending={pending} — syncing", flush=True)
+                with lock:
+                    last_run["pending"] = db_pending
+                pending = db_pending
         if waited % 10 == 0:
             print(f"[summary] Waiting — running={still_running} pending={pending} waited={waited}s", flush=True)
         if still_running or pending > 0:
@@ -495,13 +521,14 @@ def dial(number):
         # Add to call_map BEFORE acquiring lock so event handlers can find it immediately
         if uuid:
             call_map[uuid] = entry
-            print(f"[dial] Added {uuid} to call_map (size now {len(call_map)}) keys={list(call_map.keys())}", flush=True)
+            print(f"[dial] Added {uuid} to call_map (size now {len(call_map)})", flush=True)
+            # Also write to DB so it survives restarts
+            db_set_call(uuid, number, name, "dialing")
         try:
             with lock:
                 last_run["calls"].append(entry)
         except Exception as lock_err:
             print(f"[dial] CRITICAL lock error: {lock_err}", flush=True)
-        # DB log after — non-fatal
         try:
             log_id = log_call(number, name, "dialing", uuid=uuid)
             if uuid and log_id:
@@ -636,9 +663,15 @@ def answer():
     is_outbound = in_call_map or (clean_to and clean_to != vonage_num and is_approved_member(clean_to))
 
     if is_outbound:
-        # Update last_answer_time so quiet period works correctly
+        # This is when person actually enters the conference room (after voicemail detection)
         last_answer_time[0] = time.time()
-        print(f"[answer] outbound entering conference uuid={uuid}", flush=True)
+        # Decrement pending in both memory and DB
+        with lock:
+            if uuid not in answered_uuids:
+                answered_uuids.add(uuid)
+                last_run["pending"] = max(0, last_run["pending"] - 1)
+                db_set_pending(last_run["pending"])
+                print(f"[answer] outbound entering conference uuid={uuid} pending now={last_run['pending']}", flush=True)
         return jsonify([_polly_talk("Please hold, joining you to the Shmiras HaLashon conference."), *_conference_ncco()])
 
     # Inbound call — check if member is approved
@@ -727,25 +760,30 @@ def event():
     # before our dial() function finishes (especially on cold starts)
     # Wait for UUID to appear in call_map if not there yet
     if uuid and status in ("answered","machine") and uuid not in call_map:
-        print(f"[event] uuid={uuid} not in call_map. call_map has {len(call_map)} entries: {list(call_map.keys())[:3]}", flush=True)
-        for i in range(60):  # wait up to 15s
-            time.sleep(0.25)
-            if uuid in call_map:
-                print(f"[event] uuid={uuid} found after {(i+1)*0.25:.2f}s", flush=True)
-                break
+        # Try to restore from DB (handles server restart mid-conference)
+        db_entry = db_get_call(uuid)
+        if db_entry:
+            restored = {"number": db_entry.get("number",""), "name": db_entry.get("name",""),
+                        "status": "dialing", "uuid": uuid, "log_id": db_entry.get("log_id")}
+            call_map[uuid] = restored
+            with lock:
+                last_run["calls"].append(restored)
+            print(f"[event] Restored {uuid} from DB (number={db_entry.get('number','')})", flush=True)
         else:
-            # Still not found — create entry and decrement pending under lock
-            if uuid and status == "answered":
-                print(f"[event] Creating emergency entry for {uuid}", flush=True)
-                emergency_entry = {"number": "unknown", "name": "", "status": "dialing",
-                                   "uuid": uuid, "log_id": None}
-                call_map[uuid] = emergency_entry
-                with lock:
-                    last_run["calls"].append(emergency_entry)
-                    if uuid not in answered_uuids:
-                        answered_uuids.add(uuid)
-                        last_run["pending"] = max(0, last_run["pending"] - 1)
-                        print(f"[event] Emergency: decremented pending to {last_run['pending']}", flush=True)
+            # Wait briefly for dial() to add it
+            for i in range(20):
+                time.sleep(0.25)
+                if uuid in call_map:
+                    print(f"[event] uuid={uuid} found after {(i+1)*0.25:.2f}s", flush=True)
+                    break
+            else:
+                if uuid and status == "answered":
+                    print(f"[event] Creating emergency entry for {uuid}", flush=True)
+                    emergency_entry = {"number": "unknown", "name": "", "status": "dialing",
+                                       "uuid": uuid, "log_id": None}
+                    call_map[uuid] = emergency_entry
+                    with lock:
+                        last_run["calls"].append(emergency_entry)
 
     with lock:
         if uuid in call_map:
@@ -755,10 +793,7 @@ def event():
             if status == "answered":
                 entry["status"] = "connected"
                 last_run["conference_active"] = True
-                if uuid not in answered_uuids:
-                    answered_uuids.add(uuid)
-                    last_run["pending"] = max(0, last_run["pending"] - 1)
-                    print(f"[event] {uuid} answered, pending now={last_run['pending']}", flush=True)
+                db_set_conference_state(conference_active=True)
                 threading.Thread(target=update_log, args=(log_id,"connected"), daemon=True).start()
             elif status == "machine":
                 entry["status"] = "voicemail"
@@ -1854,6 +1889,103 @@ def run_scheduler():
                         threading.Thread(target=start_conference, daemon=True).start()
                         break
         time.sleep(15)
+
+def db_set_call(uuid, number, name, status="dialing", log_id=None):
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO active_calls(uuid,number,name,status,log_id)
+                    VALUES(%s,%s,%s,%s,%s)
+                    ON CONFLICT(uuid) DO UPDATE SET status=EXCLUDED.status,log_id=COALESCE(EXCLUDED.log_id,active_calls.log_id)""",
+                    (uuid, number, name, status, log_id))
+            conn.commit()
+    except Exception as e:
+        print(f"[db_set_call] error: {e}", flush=True)
+
+def db_get_call(uuid):
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM active_calls WHERE uuid=%s", (uuid,))
+                r = cur.fetchone()
+                return dict(r) if r else None
+    except: return None
+
+def db_clear_calls():
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM active_calls")
+            conn.commit()
+    except Exception as e:
+        print(f"[db_clear_calls] error: {e}", flush=True)
+
+def db_get_pending():
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pending FROM conference_state WHERE id=1")
+                r = cur.fetchone()
+                return r[0] if r else 0
+    except: return 0
+
+def db_set_pending(n):
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE conference_state SET pending=%s,updated_at=NOW() WHERE id=1", (n,))
+            conn.commit()
+    except Exception as e:
+        print(f"[db_set_pending] error: {e}", flush=True)
+
+def db_decrement_pending(uuid):
+    """Atomically decrement pending if uuid not already counted. Returns new pending value."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                # Check if already counted
+                cur.execute("SELECT status FROM active_calls WHERE uuid=%s", (uuid,))
+                row = cur.fetchone()
+                if not row or row[0] in ("connected","voicemail","unanswered","busy","failed","completed"):
+                    return db_get_pending()  # already counted
+                # Mark as counted and decrement
+                cur.execute("UPDATE active_calls SET status='connected' WHERE uuid=%s", (uuid,))
+                cur.execute("UPDATE conference_state SET pending=GREATEST(0,pending-1),updated_at=NOW() WHERE id=1 RETURNING pending")
+                r = cur.fetchone()
+                pending = r[0] if r else 0
+            conn.commit()
+            print(f"[db_decrement_pending] uuid={uuid} pending now={pending}", flush=True)
+            return pending
+    except Exception as e:
+        print(f"[db_decrement_pending] error: {e}", flush=True)
+        return 0
+
+def db_set_conference_state(running=None, conference_active=None, pending=None, summary_fired=None, run_time=None):
+    try:
+        fields = []
+        vals   = []
+        if running          is not None: fields.append("running=%s");           vals.append(running)
+        if conference_active is not None: fields.append("conference_active=%s"); vals.append(conference_active)
+        if pending          is not None: fields.append("pending=%s");           vals.append(pending)
+        if summary_fired    is not None: fields.append("summary_fired=%s");     vals.append(summary_fired)
+        if run_time         is not None: fields.append("run_time=%s");          vals.append(run_time)
+        if not fields: return
+        fields.append("updated_at=NOW()")
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE conference_state SET {','.join(fields)} WHERE id=1", vals)
+            conn.commit()
+    except Exception as e:
+        print(f"[db_set_state] error: {e}", flush=True)
+
+def db_get_conference_state():
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM conference_state WHERE id=1")
+                r = cur.fetchone()
+                return dict(r) if r else {}
+    except: return {}
 
 def _startup_sync():
     time.sleep(6)
