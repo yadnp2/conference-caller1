@@ -326,7 +326,7 @@ def get_latest_recording_meta():
     try:
         with get_db() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT date,size_bytes FROM recording_meta ORDER BY id DESC LIMIT 1")
+                cur.execute("SELECT url,date,size_bytes FROM recording_meta ORDER BY id DESC LIMIT 1")
                 r = cur.fetchone()
                 return dict(r) if r else {}
     except: return {}
@@ -381,17 +381,20 @@ def _speak_polly(text, uuids):
             VoiceId="Ruth",
             Engine="neural",
         )
+        audio_data = resp["AudioStream"].read()
+        if not audio_data:
+            raise Exception("Empty audio data from Polly")
         mp3_path = os.path.join(RECORDINGS_DIR, "announcement.mp3")
         with open(mp3_path, "wb") as f:
-            f.write(resp["AudioStream"].read())
-        print(f"[polly] Generated MP3 for: {text[:60]}...", flush=True)
+            f.write(audio_data)
+        print(f"[polly] Generated {len(audio_data)} bytes for: {text[:60]}...", flush=True)
 
         # Play the MP3 into each connected call leg
         mp3_url = f"{BASE_URL}/recordings/announcement"
         from vonage_voice.models import AudioStreamOptions
         for u in uuids:
             try:
-                client.voice.play_audio_into_call(u, AudioStreamOptions(stream_url=[mp3_url], level=0))
+                client.voice.play_audio_into_call(u, AudioStreamOptions(stream_url=[mp3_url], level=1))
                 print(f"[polly] Playing into {u}", flush=True)
             except Exception as e:
                 print(f"[polly] Play error {u}: {e}", flush=True)
@@ -534,12 +537,18 @@ def _polly_talk(text):
             VoiceId="Ruth",
             Engine="neural",
         )
-        # Save with unique filename to avoid conflicts
+        # Read audio data first, then save
+        audio_data = resp["AudioStream"].read()
+        if not audio_data:
+            print(f"[polly_talk] WARNING: Empty audio data from Polly for: {text[:50]}", flush=True)
+            return {"action": "talk", "style": 2, "text": text}
         fname = f"tts_{abs(hash(text))}.mp3"
         fpath = os.path.join(RECORDINGS_DIR, fname)
         with open(fpath, "wb") as f:
-            f.write(resp["AudioStream"].read())
-        return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 0}
+            f.write(audio_data)
+        size = os.path.getsize(fpath)
+        print(f"[polly_talk] Generated {size} bytes for: {text[:50]}", flush=True)
+        return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 1}
     except Exception as e:
         print(f"[polly_talk] Error: {e} — falling back to Vonage TTS", flush=True)
         return {"action": "talk", "style": 2, "text": text}
@@ -670,15 +679,17 @@ def event():
     status = data.get("status","")
     if uuid or status:
         print(f"[event] uuid={uuid} status={status}", flush=True)
-    # If UUID not in call_map yet, wait briefly — Vonage sometimes fires events
-    # before our dial() function finishes adding the UUID to call_map
+    # If UUID not in call_map yet, wait — Vonage sometimes fires events
+    # before our dial() function finishes (especially on cold starts)
     if uuid and status in ("answered","machine") and uuid not in call_map:
-        for _ in range(10):
-            time.sleep(0.3)
+        print(f"[event] uuid={uuid} not in call_map yet, waiting up to 15s...", flush=True)
+        for i in range(30):
+            time.sleep(0.5)
             if uuid in call_map:
+                print(f"[event] uuid={uuid} found in call_map after {(i+1)*0.5:.1f}s", flush=True)
                 break
         if uuid not in call_map:
-            print(f"[event] WARNING: uuid={uuid} not in call_map after waiting — status={status}", flush=True)
+            print(f"[event] WARNING: uuid={uuid} still not in call_map after 15s — status={status}", flush=True)
 
     with lock:
         if uuid in call_map:
