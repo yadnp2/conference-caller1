@@ -375,11 +375,8 @@ def _speak_polly(text, uuids):
         return
 
     try:
-        # Wrap text in SSML for newscaster style
-        ssml = f"<speak><amazon:domain name='news'>{text}</amazon:domain></speak>"
         resp = _polly.synthesize_speech(
-            Text=ssml,
-            TextType="ssml",
+            Text=text,
             OutputFormat="mp3",
             VoiceId="Ruth",
             Engine="neural",
@@ -531,10 +528,8 @@ def _polly_talk(text):
     if not _polly:
         return {"action": "talk", "style": 2, "text": text}
     try:
-        ssml = f"<speak><amazon:domain name='news'>{text}</amazon:domain></speak>"
         resp = _polly.synthesize_speech(
-            Text=ssml,
-            TextType="ssml",
+            Text=text,
             OutputFormat="mp3",
             VoiceId="Ruth",
             Engine="neural",
@@ -588,15 +583,9 @@ def answer():
     is_outbound = in_call_map or (clean_to and clean_to != vonage_num and is_approved_member(clean_to))
 
     if is_outbound:
-        # This is the real moment — person is entering the conference room
+        # Update last_answer_time so quiet period works correctly
         last_answer_time[0] = time.time()
-        with lock:
-            if uuid in call_map and uuid not in answered_uuids:
-                answered_uuids.add(uuid)
-                last_run["pending"] = max(0, last_run["pending"] - 1)
-                print(f"[answer] outbound entering conference, pending now={last_run['pending']}", flush=True)
-            else:
-                print(f"[answer] outbound duplicate /answer for {uuid} — ignoring", flush=True)
+        print(f"[answer] outbound entering conference uuid={uuid}", flush=True)
         return jsonify([_polly_talk("Please hold, joining you to the Shmiras HaLashon conference."), *_conference_ncco()])
 
     # Inbound call — check if member is approved
@@ -619,7 +608,9 @@ def answer():
     # If conference is over and recording exists, play recording
     if not conf_active and get_setting("replay_enabled") == "true":
         meta = get_latest_recording_meta()
-        has_recording = bool(meta.get("url")) or os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
+        disk_exists = os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
+        has_recording = bool(meta.get("url")) or disk_exists
+        print(f"[answer] inbound replay check: conf_active={conf_active} meta_url={bool(meta.get('url'))} disk={disk_exists} has_recording={has_recording}", flush=True)
         if has_recording:
             log_call(number, get_name(number), "heard-recording")
             return jsonify([
@@ -687,12 +678,15 @@ def event():
             if status == "answered":
                 entry["status"] = "connected"
                 last_run["conference_active"] = True
-                # Note: pending is decremented in /answer webhook, not here,
-                # because /answer fires when person actually enters the conference room
+                if uuid not in answered_uuids:
+                    answered_uuids.add(uuid)
+                    last_run["pending"] = max(0, last_run["pending"] - 1)
+                    print(f"[event] {uuid} answered, pending now={last_run['pending']}", flush=True)
                 threading.Thread(target=update_log, args=(log_id,"connected"), daemon=True).start()
             elif status == "machine":
                 entry["status"] = "voicemail"
-                if prev not in FINAL:
+                if uuid not in answered_uuids:
+                    answered_uuids.add(uuid)
                     last_run["pending"] = max(0, last_run["pending"] - 1)
                     print(f"[event] voicemail detected, pending now={last_run['pending']}", flush=True)
                 threading.Thread(target=update_log, args=(log_id,"voicemail"), daemon=True).start()
@@ -704,12 +698,14 @@ def event():
                     last_run["conference_active"] = still
                     print(f"[event] {uuid} completed, conference_active={still}", flush=True)
                     threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
-                elif entry["status"] == "dialing":
-                    # Person never answered — decrement pending here since /answer never fired
+                elif entry["status"] in ("dialing", "connected"):
                     if uuid not in answered_uuids:
+                        answered_uuids.add(uuid)
                         entry["status"] = status
                         last_run["pending"] = max(0, last_run["pending"] - 1)
-                        print(f"[event] {uuid} never answered ({status}), pending now={last_run['pending']}", flush=True)
+                        print(f"[event] {uuid} final status={status}, pending now={last_run['pending']}", flush=True)
+                    else:
+                        entry["status"] = status
                     threading.Thread(target=update_log, args=(log_id, status), daemon=True).start()
                 else:
                     entry["status"] = status
@@ -1776,11 +1772,28 @@ def _startup_sync():
     ok, msg = sync_from_sheets()
     print(f"[startup sync] {'OK' if ok else 'FAIL'}: {msg}", flush=True)
 
+def _startup_restore_recording():
+    """On startup, re-download the latest recording from Vonage if disk file is missing."""
+    time.sleep(8)
+    path = os.path.join(RECORDINGS_DIR, "latest.mp3")
+    if os.path.exists(path) and os.path.getsize(path) > 1000:
+        print("[startup] Recording already on disk — OK", flush=True)
+        return
+    meta = get_latest_recording_meta()
+    url  = meta.get("url","")
+    if not url:
+        print("[startup] No recording URL in DB — nothing to restore", flush=True)
+        return
+    print(f"[startup] Restoring recording from {url[:60]}...", flush=True)
+    ok = download_recording(url)
+    print(f"[startup] Recording restore {'OK' if ok else 'FAILED'}", flush=True)
+
 # ── START ─────────────────────────────────────────────────────────────────────
 
 init_db()
 threading.Thread(target=run_scheduler, daemon=True).start()
 threading.Thread(target=_startup_sync, daemon=True).start()
+threading.Thread(target=_startup_restore_recording, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
