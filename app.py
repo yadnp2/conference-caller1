@@ -491,11 +491,12 @@ def dial(number):
         print(f"[dial] Created call to {number} uuid={uuid}", flush=True)
         # Add to call_map IMMEDIATELY before any DB operations
         entry = {"number": number, "name": name, "status": "dialing", "uuid": uuid, "log_id": None}
+        # Add to call_map BEFORE acquiring lock so event handlers can find it immediately
+        if uuid:
+            call_map[uuid] = entry
+            print(f"[dial] Added {uuid} to call_map (size now {len(call_map)})", flush=True)
         try:
             with lock:
-                if uuid:
-                    call_map[uuid] = entry
-                    print(f"[dial] Added {uuid} to call_map (size now {len(call_map)})", flush=True)
                 last_run["calls"].append(entry)
         except Exception as lock_err:
             print(f"[dial] CRITICAL lock error: {lock_err}", flush=True)
@@ -566,7 +567,9 @@ def _pregenerate_polly():
             )
             audio_data = resp["AudioStream"].read()
             if audio_data:
-                fname = f"tts_{abs(hash(text))}.mp3"
+                # Use MD5 for stable filename across restarts (hash() changes each run)
+                import hashlib
+                fname = f"tts_{hashlib.md5(text.encode()).hexdigest()}.mp3"
                 fpath = os.path.join(RECORDINGS_DIR, fname)
                 with open(fpath, "wb") as f:
                     f.write(audio_data)
@@ -583,8 +586,12 @@ def _polly_talk(text):
         fname = _polly_cache[text]
         fpath = os.path.join(RECORDINGS_DIR, fname)
         if os.path.exists(fpath) and os.path.getsize(fpath) > 0:
+            print(f"[polly_talk] Serving {fname} ({os.path.getsize(fpath)} bytes)", flush=True)
             return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 1}
-    # Fallback to Vonage TTS
+        else:
+            print(f"[polly_talk] File missing or empty: {fname} — falling back", flush=True)
+    else:
+        print(f"[polly_talk] Not in cache: {text[:40]} — falling back to Vonage TTS", flush=True)
     return {"action": "talk", "style": 2, "text": text}
 
 def _conference_ncco():
@@ -715,15 +722,14 @@ def event():
         print(f"[event] uuid={uuid} status={status}", flush=True)
     # If UUID not in call_map yet, wait — Vonage sometimes fires events
     # before our dial() function finishes (especially on cold starts)
+    # Wait for UUID to appear in call_map if not there yet
+    # (Vonage fires answered event before dial() adds UUID to call_map)
     if uuid and status in ("answered","machine") and uuid not in call_map:
-        print(f"[event] uuid={uuid} not in call_map yet, waiting up to 15s...", flush=True)
-        for i in range(30):
-            time.sleep(0.5)
+        for i in range(20):
+            time.sleep(0.25)
             if uuid in call_map:
-                print(f"[event] uuid={uuid} found in call_map after {(i+1)*0.5:.1f}s", flush=True)
+                print(f"[event] uuid={uuid} found after {(i+1)*0.25:.2f}s", flush=True)
                 break
-        if uuid not in call_map:
-            print(f"[event] WARNING: uuid={uuid} still not in call_map after 15s — status={status}", flush=True)
 
     with lock:
         if uuid in call_map:
