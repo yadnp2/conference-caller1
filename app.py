@@ -372,9 +372,9 @@ call_map        = {}   # uuid → {number, name, status, log_id}
 session_blocked = set()
 answered_uuids  = set()  # tracks which UUIDs have decremented pending (prevents race condition)
 last_run        = {"time": None, "calls": [], "running": False,
-                   "conference_active": False, "pending": 0, "summary_fired": False}
+                   "conference_active": False, "pending": 0, "summary_fired": False,
+                   "confirmed": []}
 last_answer_time = [0.0]  # timestamp of last /answer webhook for outbound call
-confirmed_uuids  = []     # UUIDs confirmed in conference via /answer webhook
 
 FINAL = {"connected","voicemail","completed","busy","cancelled","failed","rejected","unanswered","timeout","error"}
 
@@ -438,7 +438,7 @@ def _play_summary():
         waited += 1
         with lock:
             still_running = last_run.get("running", False)
-        n_confirmed = len(confirmed_uuids)
+            n_confirmed   = len(last_run.get("confirmed", []))
         elapsed = time.time() - last_answer_time[0]
         if waited % 10 == 0:
             print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} quiet={elapsed:.1f}s", flush=True)
@@ -451,7 +451,9 @@ def _play_summary():
         print(f"[summary] Ready — {n_confirmed} confirmed, quiet for {elapsed:.1f}s after {waited}s", flush=True)
         break
     else:
-        print(f"[summary] Timed out after {MAX_WAIT}s — confirmed={len(confirmed_uuids)}", flush=True)
+        with lock:
+            n = len(last_run.get("confirmed", []))
+        print(f"[summary] Timed out after {MAX_WAIT}s — confirmed={n}", flush=True)
 
     with lock:
         if last_run.get("summary_fired"):
@@ -459,8 +461,9 @@ def _play_summary():
             return
         last_run["summary_fired"] = True
 
-    # Use confirmed_uuids — populated by /answer webhook, 100% reliable
-    confirmed = list(confirmed_uuids)
+    # Use last_run["confirmed"] — populated by /answer webhook, lock-protected
+    with lock:
+        confirmed = list(last_run.get("confirmed", []))
     uuids = [e["uuid"] for e in confirmed]
     names = [e["name"] for e in confirmed if e.get("name")]
 
@@ -544,10 +547,10 @@ def start_conference():
     call_map.clear()
     session_blocked.clear()
     answered_uuids.clear()
-    confirmed_uuids.clear()
     last_answer_time[0] = time.time()  # reset so quiet period waits from now
     numbers = get_active_numbers()
     with lock:
+        last_run["confirmed"] = []
         last_run["pending"] = len(numbers)
     # Reset DB state for new conference so summary thread reads correct pending
     db_set_conference_state(running=True, conference_active=False,
@@ -665,13 +668,13 @@ def answer():
             if uuid in call_map:
                 call_map[uuid]["status"] = "connected"
             last_run["conference_active"] = True
-            # Track confirmed participants for announcement (always, not just first time)
+            # Track confirmed participants for announcement
             number = call_map[uuid]["number"] if uuid in call_map else _clean(to_num) or ""
             name   = call_map[uuid]["name"]   if uuid in call_map else get_name(number)
             # Only add once per uuid
-            if not any(e["uuid"] == uuid for e in confirmed_uuids):
-                confirmed_uuids.append({"uuid": uuid, "number": number, "name": name})
-                print(f"[answer] confirmed_uuids now has {len(confirmed_uuids)}: {[e['name'] for e in confirmed_uuids]}", flush=True)
+            if not any(e["uuid"] == uuid for e in last_run["confirmed"]):
+                last_run["confirmed"].append({"uuid": uuid, "number": number, "name": name})
+                print(f"[answer] confirmed now has {len(last_run['confirmed'])}: {[e['name'] for e in last_run['confirmed']]}", flush=True)
             # Decrement pending only once
             if uuid not in answered_uuids:
                 answered_uuids.add(uuid)
@@ -1140,8 +1143,8 @@ def trigger_test():
         call_map.clear()
         session_blocked.clear()
         answered_uuids.clear()
-        confirmed_uuids.clear()
-        last_answer_time[0] = time.time()  # reset so quiet period waits from now
+        last_answer_time[0] = time.time()
+        last_run["confirmed"] = []  # reset so quiet period waits from now
         with lock:
             last_run["pending"] = len(numbers)
         print(f"[test] Starting test conference with {numbers}", flush=True)
