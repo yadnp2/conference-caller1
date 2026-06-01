@@ -438,10 +438,13 @@ def _play_summary():
         waited += 1
         with lock:
             still_running = last_run.get("running", False)
-            n_confirmed   = len(last_run.get("confirmed", []))
+            confirmed_val = last_run.get("confirmed", [])
+            n_confirmed   = len(confirmed_val)
         elapsed = time.time() - last_answer_time[0]
         if waited % 10 == 0:
-            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} quiet={elapsed:.1f}s", flush=True)
+            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} id={id(last_run)} quiet={elapsed:.1f}s", flush=True)
+            if n_confirmed == 0:
+                print(f"[summary] last_run keys={list(last_run.keys())}", flush=True)
         if still_running:
             continue
         if n_confirmed == 0:
