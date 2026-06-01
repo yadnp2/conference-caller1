@@ -373,7 +373,7 @@ session_blocked = set()
 answered_uuids  = set()  # tracks which UUIDs have decremented pending (prevents race condition)
 last_run        = {"time": None, "calls": [], "running": False,
                    "conference_active": False, "pending": 0, "summary_fired": False,
-                   "confirmed": []}
+                   "confirmed": [], "generation": 0}
 last_answer_time = [0.0]  # timestamp of last /answer webhook for outbound call
 
 FINAL = {"connected","voicemail","completed","busy","cancelled","failed","rejected","unanswered","timeout","error"}
@@ -431,20 +431,25 @@ def _play_summary():
     MAX_WAIT   = 120
     QUIET_SECS = 8
     waited     = 0
-    print(f"[summary] Starting", flush=True)
+    # Capture generation at start — exit if a new conference starts
+    with lock:
+        my_generation = last_run.get("generation", 0)
+    print(f"[summary] Starting gen={my_generation}", flush=True)
 
     while waited < MAX_WAIT:
         time.sleep(1)
         waited += 1
         with lock:
+            current_gen   = last_run.get("generation", 0)
             still_running = last_run.get("running", False)
-            confirmed_val = last_run.get("confirmed", [])
-            n_confirmed   = len(confirmed_val)
+            n_confirmed   = len(last_run.get("confirmed", []))
+        # Exit if a new conference started
+        if current_gen != my_generation:
+            print(f"[summary] New conference started (gen {my_generation}→{current_gen}) — exiting old summary", flush=True)
+            return
         elapsed = time.time() - last_answer_time[0]
         if waited % 10 == 0:
-            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} id={id(last_run)} quiet={elapsed:.1f}s", flush=True)
-            if n_confirmed == 0:
-                print(f"[summary] last_run keys={list(last_run.keys())}", flush=True)
+            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} quiet={elapsed:.1f}s", flush=True)
         if still_running:
             continue
         if n_confirmed == 0:
@@ -544,7 +549,7 @@ def start_conference():
             return
         last_run.update({"running": True, "conference_active": False, "pending": 0,
                          "summary_fired": False, "time": datetime.now(EASTERN).strftime("%A %b %d at %-I:%M %p %Z"),
-                         "calls": []})
+                         "calls": [], "generation": last_run.get("generation", 0) + 1})
     # Clear AFTER releasing lock so dial() can add immediately
     print(f"[start_conference] Clearing call_map (had {len(call_map)} entries)", flush=True)
     call_map.clear()
@@ -1141,7 +1146,7 @@ def trigger_test():
                 "running": True, "conference_active": False, "pending": 0,
                 "summary_fired": False,
                 "time": datetime.now(EASTERN).strftime("TEST — %A %b %d at %-I:%M %p %Z"),
-                "calls": []
+                "calls": [], "generation": last_run.get("generation", 0) + 1
             })
         call_map.clear()
         session_blocked.clear()
