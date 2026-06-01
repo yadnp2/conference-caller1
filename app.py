@@ -427,48 +427,31 @@ def _speak_polly(text, uuids):
                 print(f"[polly] Vonage TTS fallback error {u}: {e2}", flush=True)
 
 def _play_summary():
-    """Wait until all outbound calls settle AND no new /answer calls for 3 seconds,
-    then announce who joined. This ensures everyone is actually in the conference room."""
+    """Wait for confirmed participants then play announcement."""
     MAX_WAIT   = 120
-    QUIET_SECS = 12   # seconds of no new joins before playing (allow hold message to finish)
+    QUIET_SECS = 8
     waited     = 0
-    print(f"[summary] Starting — waiting for all calls to settle", flush=True)
+    print(f"[summary] Starting", flush=True)
 
-    # Phase 1: wait for all calls to settle (pending = 0 and not running)
     while waited < MAX_WAIT:
         time.sleep(1)
         waited += 1
         with lock:
             still_running = last_run.get("running", False)
-            pending       = last_run.get("pending", 0)
-        # Also check DB pending in case state was lost due to restart
-        if pending > 0:
-            db_pending = db_get_pending()
-            if db_pending < pending:
-                print(f"[summary] DB pending={db_pending} < memory pending={pending} — syncing", flush=True)
-                with lock:
-                    last_run["pending"] = db_pending
-                pending = db_pending
+        n_confirmed = len(confirmed_uuids)
+        elapsed = time.time() - last_answer_time[0]
         if waited % 10 == 0:
-            print(f"[summary] Waiting — running={still_running} pending={pending} waited={waited}s", flush=True)
-        if still_running or pending > 0:
+            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} quiet={elapsed:.1f}s", flush=True)
+        if still_running:
             continue
-        print(f"[summary] Settled! running={still_running} pending={pending} after {waited}s", flush=True)
+        if n_confirmed == 0:
+            continue
+        if elapsed < QUIET_SECS:
+            continue
+        print(f"[summary] Ready — {n_confirmed} confirmed, quiet for {elapsed:.1f}s after {waited}s", flush=True)
         break
-
-    print(f"[summary] All calls settled after {waited}s — now waiting for quiet period", flush=True)
-
-    # Phase 2: wait until no new /answer calls for QUIET_SECS seconds
-    quiet_waited = 0
-    while quiet_waited < 30:  # max 30s extra wait
-        time.sleep(1)
-        quiet_waited += 1
-        elapsed_since_last_join = time.time() - last_answer_time[0]
-        if elapsed_since_last_join >= QUIET_SECS:
-            print(f"[summary] Quiet for {elapsed_since_last_join:.1f}s — playing announcement", flush=True)
-            break
-        else:
-            print(f"[summary] Someone joined {elapsed_since_last_join:.1f}s ago — waiting...", flush=True)
+    else:
+        print(f"[summary] Timed out after {MAX_WAIT}s — confirmed={len(confirmed_uuids)}", flush=True)
 
     with lock:
         if last_run.get("summary_fired"):
@@ -570,6 +553,9 @@ def start_conference():
     db_set_conference_state(running=True, conference_active=False,
                             pending=len(numbers), summary_fired=False)
     db_clear_calls()
+    # Verify DB was set correctly
+    db_state = db_get_conference_state()
+    print(f"[start_conference] DB state after reset: pending={db_state.get('pending')} running={db_state.get('running')}", flush=True)
     print(f"Starting conference — dialing {len(numbers)} members...")
     try:
         for number in numbers:
@@ -674,21 +660,24 @@ def answer():
     if is_outbound:
         # This is when person actually enters the conference room (after voicemail detection)
         last_answer_time[0] = time.time()
-        # Decrement pending in both memory and DB
         with lock:
+            # Mark as connected regardless of answered_uuids state
+            if uuid in call_map:
+                call_map[uuid]["status"] = "connected"
+            last_run["conference_active"] = True
+            # Track confirmed participants for announcement (always, not just first time)
+            number = call_map[uuid]["number"] if uuid in call_map else _clean(to_num) or ""
+            name   = call_map[uuid]["name"]   if uuid in call_map else get_name(number)
+            # Only add once per uuid
+            if not any(e["uuid"] == uuid for e in confirmed_uuids):
+                confirmed_uuids.append({"uuid": uuid, "number": number, "name": name})
+                print(f"[answer] confirmed_uuids now has {len(confirmed_uuids)}: {[e['name'] for e in confirmed_uuids]}", flush=True)
+            # Decrement pending only once
             if uuid not in answered_uuids:
                 answered_uuids.add(uuid)
                 last_run["pending"] = max(0, last_run["pending"] - 1)
                 db_set_pending(last_run["pending"])
-                # Mark as connected so summary can find them
-                if uuid in call_map:
-                    call_map[uuid]["status"] = "connected"
-                last_run["conference_active"] = True
-                # Track confirmed participants for announcement
-                number = call_map[uuid]["number"] if uuid in call_map else ""
-                name   = call_map[uuid]["name"]   if uuid in call_map else ""
-                confirmed_uuids.append({"uuid": uuid, "number": number, "name": name})
-                print(f"[answer] outbound entering conference uuid={uuid} pending now={last_run['pending']}", flush=True)
+            print(f"[answer] outbound entering conference uuid={uuid} pending now={last_run['pending']}", flush=True)
         return jsonify([_polly_talk("Please hold, joining you to the Shmiras HaLashon conference."), *_conference_ncco()])
 
     # Inbound call — check if member is approved
