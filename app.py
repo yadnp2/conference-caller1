@@ -429,7 +429,7 @@ def _play_summary():
     """Wait until all outbound calls settle AND no new /answer calls for 3 seconds,
     then announce who joined. This ensures everyone is actually in the conference room."""
     MAX_WAIT   = 120
-    QUIET_SECS = 8    # seconds of no new joins before playing (allow hold message to finish)
+    QUIET_SECS = 12   # seconds of no new joins before playing (allow hold message to finish)
     waited     = 0
     print(f"[summary] Starting — waiting for all calls to settle", flush=True)
 
@@ -475,18 +475,23 @@ def _play_summary():
             return
         last_run["summary_fired"] = True
         calls = list(last_run["calls"])
-        names = [e["name"] for e in calls if e.get("status")=="connected" and e.get("name")]
+        # Include all connected participants, named or not
+        connected = [e for e in calls if e.get("status")=="connected"]
+        names = [e["name"] for e in connected if e.get("name")]
         uuids = [u for u,e in call_map.items() if e.get("status")=="connected"]
 
-    print(f"[summary] Playing for {len(names)} connected: {names}", flush=True)
+    print(f"[summary] Playing for {len(connected)} connected ({len(names)} named): {names}", flush=True)
 
-    if not names or not uuids:
-        print(f"[summary] No connected participants — skipping", flush=True)
+    if not uuids:
+        print(f"[summary] No connected UUIDs — skipping", flush=True)
         return
 
     # Build announcement text
-
-    if len(names) == 1:
+    count = len(connected)
+    if not names:
+        # No names set — just play a welcome + sponsor
+        text = "Welcome everyone. The conference has started."
+    elif len(names) == 1:
         text = f"Welcome. {names[0]} has joined the call."
     elif len(names) == 2:
         text = f"Welcome everyone. {names[0]} and {names[1]} have joined."
@@ -561,6 +566,10 @@ def start_conference():
     numbers = get_active_numbers()
     with lock:
         last_run["pending"] = len(numbers)
+    # Reset DB state for new conference so summary thread reads correct pending
+    db_set_conference_state(running=True, conference_active=False,
+                            pending=len(numbers), summary_fired=False)
+    db_clear_calls()
     print(f"Starting conference — dialing {len(numbers)} members...")
     try:
         for number in numbers:
@@ -862,10 +871,17 @@ def recording_webhook():
 
 @app.route("/recordings/announcement")
 def recording_announcement():
+    from flask import Response
     path = os.path.join(RECORDINGS_DIR, "announcement.mp3")
     if not os.path.exists(path):
         return "No announcement", 404
-    return send_from_directory(RECORDINGS_DIR, "announcement.mp3", mimetype="audio/mpeg")
+    with open(path, "rb") as f:
+        data = f.read()
+    print(f"[announcement] Serving {len(data)} bytes", flush=True)
+    return Response(data, mimetype="audio/mpeg",
+                    headers={"Content-Length": str(len(data)),
+                             "Accept-Ranges": "bytes",
+                             "Cache-Control": "no-cache"})
 
 @app.route("/recordings/tts/<fname>")
 def recording_tts(fname):
@@ -890,7 +906,14 @@ def recording_audio():
     # Try disk first
     path = os.path.join(RECORDINGS_DIR, "latest.mp3")
     if os.path.exists(path) and os.path.getsize(path) > 1000:
-        return send_from_directory(RECORDINGS_DIR, "latest.mp3", mimetype="audio/mpeg")
+        from flask import Response as _R
+        with open(path, "rb") as f:
+            data = f.read()
+        print(f"[audio] Serving latest.mp3 ({len(data)} bytes)", flush=True)
+        return _R(data, mimetype="audio/mpeg",
+                  headers={"Content-Length": str(len(data)),
+                           "Accept-Ranges": "bytes",
+                           "Cache-Control": "no-cache"})
     # Fallback: stream from Vonage URL using JWT auth
     try:
         meta = get_latest_recording_meta()
@@ -1508,6 +1531,8 @@ def status():
     <div id='ann-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
   </div>
 
+
+
   <div class='card'>
     <div class='card-hdr'><span class='card-title'>Sponsor Message</span></div>
     <div id='sponsor-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
@@ -1686,34 +1711,6 @@ function renderAnn(s){{
   if(!el)return;
   const on=s.announcements_enabled;
   el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('announcements_enabled')">${{on?'Announcements: On':'Announcements: Off'}}</button><span class="thint">${{on?'Plays who joined after all calls settle.':'Enable.'}}</span></div>`;
-}}
-function renderSponsor(s){{
-  const el=document.getElementById("sponsor-section");
-  if(!el)return;
-  const on=s.sponsor_enabled;
-  const txt=s.sponsor_text||"";
-  el.innerHTML=`<div class="toggle-row">
-    <button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('sponsor_enabled')">${{on?'Sponsor: On':'Sponsor: Off'}}</button>
-    <span class="thint">${{on?'Sponsor message plays after the welcome announcement.':'Enable to add a sponsor message.'}}</span>
-  </div>
-  <div style="margin-top:.75rem">
-    <textarea id="sponsor-text" rows="3"
-      style="width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);
-             border-radius:var(--rs);padding:.6rem .75rem;font-size:.82rem;font-family:Inter,sans-serif;
-             resize:vertical;line-height:1.5"
-      placeholder="e.g. Today's conference is sponsored by Acme Corp.">${{txt}}</textarea>
-    <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
-      <button class="btn btn-save" style="padding:.38rem .9rem;font-size:.8rem" onclick="saveSponsor()">Save Message</button>
-      <span style="font-size:.73rem;color:var(--text3)">Played after the welcome announcement</span>
-    </div>
-  </div>`;
-}}
-
-async function saveSponsor(){{
-  const text=document.getElementById("sponsor-text").value.trim();
-  const r=await api("/sponsor/save",{{text}});
-  if(r.ok)toast("Sponsor message saved!");
-  else toast("Failed to save");
 }}
 
 function renderSheets(msg,ok){{
