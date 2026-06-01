@@ -1713,6 +1713,35 @@ function renderAnn(s){{
   el.innerHTML=`<div class="toggle-row"><button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('announcements_enabled')">${{on?'Announcements: On':'Announcements: Off'}}</button><span class="thint">${{on?'Plays who joined after all calls settle.':'Enable.'}}</span></div>`;
 }}
 
+function renderSponsor(s){{
+  const el=document.getElementById("sponsor-section");
+  if(!el)return;
+  const on=s.sponsor_enabled;
+  const txt=s.sponsor_text||"";
+  el.innerHTML=`<div class="toggle-row">
+    <button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('sponsor_enabled')">${{on?'Sponsor: On':'Sponsor: Off'}}</button>
+    <span class="thint">${{on?'Sponsor message plays after the welcome announcement.':'Enable to add a sponsor message.'}}</span>
+  </div>
+  <div style="margin-top:.75rem">
+    <textarea id="sponsor-text" rows="3"
+      style="width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);
+             border-radius:var(--rs);padding:.6rem .75rem;font-size:.82rem;font-family:Inter,sans-serif;
+             resize:vertical;line-height:1.5"
+      placeholder="e.g. Today's conference is sponsored by Acme Corp.">${{txt}}</textarea>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
+      <button class="btn btn-save" style="padding:.38rem .9rem;font-size:.8rem" onclick="saveSponsor()">Save Message</button>
+      <span style="font-size:.73rem;color:var(--text3)">Played after the welcome announcement</span>
+    </div>
+  </div>`;
+}}
+
+async function saveSponsor(){{
+  const text=document.getElementById("sponsor-text").value.trim();
+  const r=await api("/sponsor/save",{{text}});
+  if(r.ok)toast("Sponsor message saved!");
+  else toast("Failed to save");
+}}
+
 function renderSheets(msg,ok){{
   const el=document.getElementById("sheets-section");
   if(!el)return;
