@@ -680,6 +680,10 @@ def answer():
                 answered_uuids.add(uuid)
                 last_run["pending"] = max(0, last_run["pending"] - 1)
                 db_set_pending(last_run["pending"])
+                # Mark as connected so summary can find them
+                if uuid in call_map:
+                    call_map[uuid]["status"] = "connected"
+                last_run["conference_active"] = True
                 print(f"[answer] outbound entering conference uuid={uuid} pending now={last_run['pending']}", flush=True)
         return jsonify([_polly_talk("Please hold, joining you to the Shmiras HaLashon conference."), *_conference_ncco()])
 
