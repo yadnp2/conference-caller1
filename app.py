@@ -374,6 +374,7 @@ answered_uuids  = set()  # tracks which UUIDs have decremented pending (prevents
 last_run        = {"time": None, "calls": [], "running": False,
                    "conference_active": False, "pending": 0, "summary_fired": False}
 last_answer_time = [0.0]  # timestamp of last /answer webhook for outbound call
+confirmed_uuids  = []     # UUIDs confirmed in conference via /answer webhook
 
 FINAL = {"connected","voicemail","completed","busy","cancelled","failed","rejected","unanswered","timeout","error"}
 
@@ -474,22 +475,20 @@ def _play_summary():
             print("[summary] Already fired — skipping", flush=True)
             return
         last_run["summary_fired"] = True
-        calls = list(last_run["calls"])
-        # Include all connected participants, named or not
-        connected = [e for e in calls if e.get("status")=="connected"]
-        names = [e["name"] for e in connected if e.get("name")]
-        uuids = [u for u,e in call_map.items() if e.get("status")=="connected"]
 
-    print(f"[summary] Playing for {len(connected)} connected ({len(names)} named): {names}", flush=True)
+    # Use confirmed_uuids — populated by /answer webhook, 100% reliable
+    confirmed = list(confirmed_uuids)
+    uuids = [e["uuid"] for e in confirmed]
+    names = [e["name"] for e in confirmed if e.get("name")]
+
+    print(f"[summary] Playing for {len(confirmed)} confirmed: {names} uuids={uuids}", flush=True)
 
     if not uuids:
-        print(f"[summary] No connected UUIDs — skipping", flush=True)
+        print(f"[summary] No confirmed participants — skipping", flush=True)
         return
 
     # Build announcement text
-    count = len(connected)
     if not names:
-        # No names set — just play a welcome + sponsor
         text = "Welcome everyone. The conference has started."
     elif len(names) == 1:
         text = f"Welcome. {names[0]} has joined the call."
@@ -562,6 +561,7 @@ def start_conference():
     call_map.clear()
     session_blocked.clear()
     answered_uuids.clear()
+    confirmed_uuids.clear()
     last_answer_time[0] = time.time()  # reset so quiet period waits from now
     numbers = get_active_numbers()
     with lock:
@@ -684,6 +684,10 @@ def answer():
                 if uuid in call_map:
                     call_map[uuid]["status"] = "connected"
                 last_run["conference_active"] = True
+                # Track confirmed participants for announcement
+                number = call_map[uuid]["number"] if uuid in call_map else ""
+                name   = call_map[uuid]["name"]   if uuid in call_map else ""
+                confirmed_uuids.append({"uuid": uuid, "number": number, "name": name})
                 print(f"[answer] outbound entering conference uuid={uuid} pending now={last_run['pending']}", flush=True)
         return jsonify([_polly_talk("Please hold, joining you to the Shmiras HaLashon conference."), *_conference_ncco()])
 
@@ -797,6 +801,11 @@ def event():
                     call_map[uuid] = emergency_entry
                     with lock:
                         last_run["calls"].append(emergency_entry)
+
+    # If /answer already marked this as connected, don't overwrite it back to dialing
+    if uuid in call_map and call_map[uuid].get("status") == "connected" and status == "answered":
+        print(f"[event] {uuid} already connected via /answer — skipping answered event", flush=True)
+        return "OK", 200
 
     with lock:
         if uuid in call_map:
@@ -1142,6 +1151,7 @@ def trigger_test():
         call_map.clear()
         session_blocked.clear()
         answered_uuids.clear()
+        confirmed_uuids.clear()
         last_answer_time[0] = time.time()  # reset so quiet period waits from now
         with lock:
             last_run["pending"] = len(numbers)
