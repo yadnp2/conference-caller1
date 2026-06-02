@@ -105,6 +105,9 @@ def init_db():
             # sponsor_enabled defaults to false, sponsor_text defaults to empty
             cur.execute("INSERT INTO settings (key,value) VALUES ('sponsor_enabled','false') ON CONFLICT DO NOTHING")
             cur.execute("INSERT INTO settings (key,value) VALUES ('sponsor_text','') ON CONFLICT (key) DO UPDATE SET value=COALESCE(NULLIF(settings.value,''),'')")
+            cur.execute("INSERT INTO settings (key,value) VALUES ('announcement_text','') ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO settings (key,value) VALUES ('announcement_text','') ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO settings (key,value) VALUES ('announcement_text','') ON CONFLICT DO NOTHING")
         conn.commit()
     print("DB initialized.")
 
@@ -506,8 +509,11 @@ def _play_summary():
         print(f"[summary] No confirmed participants — skipping", flush=True)
         return
 
-    # Build announcement text
-    if not names:
+    # Use custom announcement message if set, otherwise build default
+    custom_msg = get_setting("announcement_text", "").strip()
+    if custom_msg:
+        text = custom_msg
+    elif not names:
         text = "Welcome everyone. The conference has started."
     elif len(names) == 1:
         text = f"Welcome. {names[0]} has joined the call."
@@ -515,12 +521,6 @@ def _play_summary():
         text = f"Welcome everyone. {names[0]} and {names[1]} have joined."
     else:
         text = f"Welcome everyone. {', '.join(names[:-1])}, and {names[-1]} have joined."
-
-    # Append sponsor message if enabled
-    if get_setting("sponsor_enabled") == "true":
-        sponsor = get_setting("sponsor_text", "").strip()
-        if sponsor:
-            text += f" {sponsor}"
 
     print(f"Summary: {text}", flush=True)
     _speak_polly(text, uuids)
@@ -1199,6 +1199,14 @@ def sponsor_save():
     set_setting("sponsor_text", text)
     return jsonify({"ok": True, "text": text})
 
+@app.route("/announcement/save", methods=["POST"])
+@login_required
+def announcement_save():
+    d = request.json or {}
+    text = d.get("text", "").strip()
+    set_setting("announcement_text", text)
+    return jsonify({"ok": True, "text": text})
+
 @app.route("/trigger", methods=["POST"])
 @login_required
 def trigger():
@@ -1303,6 +1311,8 @@ def api_state():
         "announcements_enabled": get_setting("announcements_enabled") == "true",
         "sponsor_enabled":       get_setting("sponsor_enabled") == "true",
         "sponsor_text":          get_setting("sponsor_text", ""),
+        "announcement_text":     get_setting("announcement_text", ""),
+        "announcement_text":     get_setting("announcement_text", ""),
         "rec_meta":              rec_meta,
         "rec_exists":            rec_exists,
     })
@@ -1620,16 +1630,13 @@ def status():
     <div id='rec-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
   </div>
 
-  <div class='card'>
-    <div class='card-hdr'><span class='card-title'>Join Announcements</span></div>
-    <div id='ann-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
-  </div>
+
 
 
 
   <div class='card'>
-    <div class='card-hdr'><span class='card-title'>Sponsor Message</span></div>
-    <div id='sponsor-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
+    <div class='card-hdr'><span class='card-title'>Welcome Announcement</span></div>
+    <div id='announcement-edit-section'><p style='color:var(--text3);font-size:.82rem'>Loading...</p></div>
   </div>
 
   <div class='card'>
@@ -1808,31 +1815,31 @@ function renderAnn(s){{
 }}
 
 function renderSponsor(s){{
-  const el=document.getElementById("sponsor-section");
+  const el=document.getElementById("announcement-edit-section");
   if(!el)return;
-  const on=s.sponsor_enabled;
-  const txt=s.sponsor_text||"";
+  const on=s.announcements_enabled;
+  const txt=s.announcement_text||"";
   el.innerHTML=`<div class="toggle-row">
-    <button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('sponsor_enabled')">${{on?'Sponsor: On':'Sponsor: Off'}}</button>
-    <span class="thint">${{on?'Sponsor message plays after the welcome announcement.':'Enable to add a sponsor message.'}}</span>
+    <button class="toggle-btn ${{on?'ton':'toff'}}" onclick="toggleSetting('announcements_enabled')">${{on?'Announcement: On':'Announcement: Off'}}</button>
+    <span class="thint">${{on?'Message plays after all calls settle. Leave blank for auto name announcement.':'Enable to play announcement after conference starts.'}}</span>
   </div>
   <div style="margin-top:.75rem">
-    <textarea id="sponsor-text" rows="3"
+    <textarea id="announcement-text" rows="3"
       style="width:100%;background:var(--surface2);border:1px solid var(--border2);color:var(--text);
              border-radius:var(--rs);padding:.6rem .75rem;font-size:.82rem;font-family:Inter,sans-serif;
              resize:vertical;line-height:1.5"
-      placeholder="e.g. Today's conference is sponsored by Acme Corp.">${{txt}}</textarea>
+      placeholder="Leave blank for automatic name announcement, or type any custom message.">${{txt}}</textarea>
     <div style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
-      <button class="btn btn-save" style="padding:.38rem .9rem;font-size:.8rem" onclick="saveSponsor()">Save Message</button>
-      <span style="font-size:.73rem;color:var(--text3)">Played after the welcome announcement</span>
+      <button class="btn btn-save" style="padding:.38rem .9rem;font-size:.8rem" onclick="saveAnnouncement()">Save</button>
+      <span style="font-size:.73rem;color:var(--text3)">Leave blank for automatic "Welcome, [names] have joined"</span>
     </div>
   </div>`;
 }}
 
-async function saveSponsor(){{
-  const text=document.getElementById("sponsor-text").value.trim();
-  const r=await api("/sponsor/save",{{text}});
-  if(r.ok)toast("Sponsor message saved!");
+async function saveAnnouncement(){{
+  const text=document.getElementById("announcement-text").value.trim();
+  const r=await api("/announcement/save",{{text}});
+  if(r.ok)toast("Saved!");
   else toast("Failed to save");
 }}
 
@@ -1937,7 +1944,7 @@ async function refresh(){{
   try{{
     const s=await fetch("/api/state",{{credentials:"include"}}).then(r=>r.json());
     renderLastRun(s);renderMembers(s.members||[]);renderSchedule(s.schedule||[]);
-    renderRec(s);renderAnn(s);renderSponsor(s);renderSheets("",true);renderHangup();
+    renderRec(s);renderSponsor(s);renderSheets("",true);renderHangup();
   }}catch(e){{console.error("Refresh error",e);}}
 }}
 refresh();
