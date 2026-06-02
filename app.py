@@ -469,11 +469,19 @@ def _play_summary():
             return
         last_run["summary_fired"] = True
 
-    # Use last_run["confirmed"] — populated by /answer webhook, lock-protected
+    # Get connected participants from both confirmed and call_map
     with lock:
         confirmed = list(last_run.get("confirmed", []))
-    uuids = [e["uuid"] for e in confirmed]
-    names = [e["name"] for e in confirmed if e.get("name")]
+        active_uuids = {u for u,e in call_map.items() if e.get("status") == "connected"}
+    # Use confirmed list but only for UUIDs that are still connected
+    # Fall back to all confirmed if call_map has no connected entries
+    if active_uuids:
+        final = [e for e in confirmed if e["uuid"] in active_uuids]
+    else:
+        final = confirmed
+    uuids = [e["uuid"] for e in final]
+    names = [e["name"] for e in final if e.get("name")]
+    print(f"[summary] {len(final)} active from {len(confirmed)} confirmed", flush=True)
 
     print(f"[summary] Playing for {len(confirmed)} confirmed: {names} uuids={uuids}", flush=True)
 
@@ -617,18 +625,32 @@ def _pregenerate_polly():
             print(f"[polly] Pre-generate error: {e}", flush=True)
 
 def _polly_talk(text):
-    """Return NCCO action using pre-generated Polly MP3 if available, else Vonage TTS."""
-    if text in _polly_cache:
-        fname = _polly_cache[text]
+    """Generate Polly MP3 on the fly and return a stream NCCO action.
+    Falls back to Vonage TTS if Polly unavailable."""
+    if not _polly:
+        return {"action": "talk", "style": 2, "text": text}
+    try:
+        import hashlib
+        fname = f"tts_{hashlib.md5(text.encode()).hexdigest()}.mp3"
         fpath = os.path.join(RECORDINGS_DIR, fname)
+        # Use cached file if it exists
         if os.path.exists(fpath) and os.path.getsize(fpath) > 0:
-            print(f"[polly_talk] Serving {fname} ({os.path.getsize(fpath)} bytes)", flush=True)
+            print(f"[polly_talk] Using cached {fname}", flush=True)
             return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 1}
-        else:
-            print(f"[polly_talk] File missing or empty: {fname} — falling back", flush=True)
-    else:
-        print(f"[polly_talk] Not in cache: {text[:40]} — falling back to Vonage TTS", flush=True)
-    return {"action": "talk", "style": 2, "text": text}
+        # Generate fresh
+        resp = _polly.synthesize_speech(
+            Text=text, OutputFormat="mp3", VoiceId="Ruth", Engine="neural"
+        )
+        audio_data = resp["AudioStream"].read()
+        if not audio_data:
+            raise Exception("Empty audio from Polly")
+        with open(fpath, "wb") as f:
+            f.write(audio_data)
+        print(f"[polly_talk] Generated {len(audio_data)} bytes for: {text[:50]}", flush=True)
+        return {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/tts/{fname}"], "level": 1}
+    except Exception as e:
+        print(f"[polly_talk] Error: {e} — falling back to Vonage TTS", flush=True)
+        return {"action": "talk", "style": 2, "text": text}
 
 def _conference_ncco():
     ncco = {
@@ -773,6 +795,18 @@ def event():
     status = data.get("status","")
     if uuid or status:
         print(f"[event] uuid={uuid} status={status}", flush=True)
+
+    # Handle machine detection with empty UUID — find the call by conversation_uuid
+    if not uuid and status == "machine":
+        conv_uuid = data.get("conversation_uuid", "")
+        print(f"[event] machine detected with empty uuid, conv={conv_uuid}", flush=True)
+        # Find the matching call in call_map by looking for dialing calls
+        with lock:
+            for u, e in list(call_map.items()):
+                if e.get("status") == "dialing":
+                    uuid = u
+                    print(f"[event] matched machine to uuid={uuid} number={e.get('number','')}", flush=True)
+                    break
     # If UUID not in call_map yet, wait — Vonage sometimes fires events
     # before our dial() function finishes (especially on cold starts)
     # Wait for UUID to appear in call_map if not there yet
@@ -2054,11 +2088,8 @@ init_db()
 threading.Thread(target=run_scheduler, daemon=True).start()
 threading.Thread(target=_startup_sync, daemon=True).start()
 threading.Thread(target=_startup_restore_recording, daemon=True).start()
-# Pre-generate Polly files synchronously so they're ready before any calls
-try:
-    _pregenerate_polly()
-except Exception as e:
-    print(f"[startup] Polly pre-generate error: {e}", flush=True)
+# Pre-warm Polly cache for common messages
+threading.Thread(target=_pregenerate_polly, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
