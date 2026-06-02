@@ -468,15 +468,22 @@ def _play_summary():
             print("[summary] Already fired — skipping", flush=True)
             return
         last_run["summary_fired"] = True
+    db_set_conference_state(summary_fired=True)
 
-    # Get connected participants from both confirmed and call_map
+    # Get confirmed participants — restore from DB if memory is empty (handles restart)
     with lock:
         confirmed = list(last_run.get("confirmed", []))
         active_uuids = {u for u,e in call_map.items() if e.get("status") == "connected"}
-    # Use confirmed list but only for UUIDs that are still connected
-    # Fall back to all confirmed if call_map has no connected entries
+    if not confirmed:
+        confirmed = db_get_confirmed()
+        print(f"[summary] Restored {len(confirmed)} confirmed from DB", flush=True)
+        with lock:
+            last_run["confirmed"] = confirmed
+    # Use confirmed but filter to still-connected if we have that info
     if active_uuids:
         final = [e for e in confirmed if e["uuid"] in active_uuids]
+        if not final:
+            final = confirmed  # fallback if active_uuids doesn't match
     else:
         final = confirmed
     uuids = [e["uuid"] for e in final]
@@ -704,6 +711,7 @@ def answer():
             # Only add once per uuid
             if not any(e["uuid"] == uuid for e in last_run["confirmed"]):
                 last_run["confirmed"].append({"uuid": uuid, "number": number, "name": name})
+                db_add_confirmed(uuid, number, name)
                 print(f"[answer] confirmed now has {len(last_run['confirmed'])}: {[e['name'] for e in last_run['confirmed']]}", flush=True)
             # Decrement pending only once
             if uuid not in answered_uuids:
@@ -1901,6 +1909,279 @@ if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(
 </body></html>"""
 
 
+# ── IVR ADMIN ────────────────────────────────────────────────────────────────
+
+def get_admin_pin():
+    return get_setting("admin_pin", "4475")
+
+def set_admin_pin(pin):
+    set_setting("admin_pin", pin)
+
+@app.route("/ivr", methods=["GET","POST"])
+def ivr():
+    """Entry point — ask for PIN"""
+    return jsonify([
+        _polly_talk("Welcome to the Shmiras HaLashon conference admin line. Please enter your 4 digit PIN followed by the pound sign."),
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 4, "submitOnHash": True, "timeOut": 10},
+         "eventUrl": [f"{BASE_URL}/ivr/pin"]}
+    ])
+
+@app.route("/ivr/pin", methods=["GET","POST"])
+def ivr_pin():
+    """Verify PIN and show main menu"""
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    if digit != get_admin_pin():
+        return jsonify([
+            _polly_talk("Incorrect PIN. Goodbye."),
+        ])
+    return jsonify(_ivr_main_menu())
+
+def _ivr_main_menu():
+    return [
+        _polly_talk("Main menu. Press 1 for schedule. Press 2 for members. Press 3 to start conference now. Press 4 for last conference summary. Press 9 to change PIN."),
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+         "eventUrl": [f"{BASE_URL}/ivr/menu"]}
+    ]
+
+@app.route("/ivr/menu", methods=["GET","POST"])
+def ivr_menu():
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    if digit == "1":
+        return jsonify(_ivr_schedule_menu())
+    elif digit == "2":
+        return jsonify(_ivr_members_menu())
+    elif digit == "3":
+        with lock:
+            already = last_run.get("running", False)
+        if already:
+            return jsonify([_polly_talk("A conference is already in progress. Goodbye.")])
+        threading.Thread(target=start_conference, daemon=True).start()
+        return jsonify([_polly_talk("Starting the conference now. Goodbye.")])
+    elif digit == "4":
+        with lock:
+            calls = list(last_run.get("calls", []))
+            run_time = last_run.get("time", "")
+        connected = [c for c in calls if c.get("status") == "connected"]
+        names = [c["name"] for c in connected if c.get("name")]
+        if not run_time:
+            msg = "No conference has been run yet."
+        elif not connected:
+            msg = f"The last conference on {run_time} had no connected participants."
+        elif names:
+            if len(names) == 1:
+                msg = f"The last conference on {run_time} had {names[0]} connected."
+            else:
+                msg = f"The last conference on {run_time} had {len(names)} participants. {', '.join(names[:-1])}, and {names[-1]}."
+        else:
+            msg = f"The last conference on {run_time} had {len(connected)} participants."
+        return jsonify([_polly_talk(msg), *_ivr_main_menu()])
+    elif digit == "9":
+        return jsonify([
+            _polly_talk("Enter your new 4 digit PIN followed by the pound sign."),
+            {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 4, "submitOnHash": True, "timeOut": 10},
+             "eventUrl": [f"{BASE_URL}/ivr/change-pin"]}
+        ])
+    else:
+        return jsonify(_ivr_main_menu())
+
+# ── IVR SCHEDULE ──────────────────────────────────────────────────────────────
+
+DAYS_SHORT = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+
+def _ivr_schedule_menu():
+    schedule = load_schedule()
+    if not schedule:
+        sched_msg = "No schedule is currently set."
+    else:
+        parts = []
+        for e in schedule:
+            day = DAYS_SHORT[e["day"]]
+            h24 = e["hour"]
+            m   = e["minute"]
+            ampm = "PM" if h24 >= 12 else "AM"
+            h12  = h24 % 12 or 12
+            parts.append(f"{day} at {h12}:{str(m).zfill(2)} {ampm}")
+        sched_msg = "Current schedule: " + ", ".join(parts) + "."
+    return [
+        _polly_talk(f"{sched_msg} Press 1 to set a day. Press 2 to clear a day. Press 0 to return to main menu."),
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+         "eventUrl": [f"{BASE_URL}/ivr/schedule-action"]}
+    ]
+
+@app.route("/ivr/schedule-action", methods=["GET","POST"])
+def ivr_schedule_action():
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    if digit == "1":
+        return jsonify([
+            _polly_talk("Enter the day number. 1 for Monday, 2 for Tuesday, 3 for Wednesday, 4 for Thursday, 5 for Friday, 6 for Saturday, 7 for Sunday."),
+            {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+             "eventUrl": [f"{BASE_URL}/ivr/schedule-set-day"]}
+        ])
+    elif digit == "2":
+        return jsonify([
+            _polly_talk("Enter the day number to clear. 1 for Monday through 7 for Sunday."),
+            {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+             "eventUrl": [f"{BASE_URL}/ivr/schedule-clear-day"]}
+        ])
+    else:
+        return jsonify(_ivr_main_menu())
+
+@app.route("/ivr/schedule-set-day", methods=["GET","POST"])
+def ivr_schedule_set_day():
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    try:
+        day = int(digit) - 1
+        if not 0 <= day <= 6:
+            raise ValueError()
+    except:
+        return jsonify([_polly_talk("Invalid day."), *_ivr_schedule_menu()])
+    # Store day in session-like way using a temp setting
+    set_setting("ivr_temp_day", str(day))
+    return jsonify([
+        _polly_talk(f"Enter the time as 4 digits. For example, for 10:45 press 1045. For 9:30 press 0930. Then press pound."),
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 4, "submitOnHash": True, "timeOut": 15},
+         "eventUrl": [f"{BASE_URL}/ivr/schedule-set-time"]}
+    ])
+
+@app.route("/ivr/schedule-set-time", methods=["GET","POST"])
+def ivr_schedule_set_time():
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digits = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    day = int(get_setting("ivr_temp_day", "0"))
+    try:
+        if len(digits) == 3:
+            digits = "0" + digits
+        h = int(digits[:2])
+        m = int(digits[2:])
+        if not (0 <= h <= 12 and 0 <= m <= 59):
+            raise ValueError()
+    except:
+        return jsonify([_polly_talk("Invalid time. Please try again."), *_ivr_schedule_menu()])
+    return jsonify([
+        _polly_talk(f"Is that AM or PM? Press 1 for AM, 2 for PM."),
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+         "eventUrl": [f"{BASE_URL}/ivr/schedule-set-ampm?h={h}&m={m}&day={day}"]}
+    ])
+
+@app.route("/ivr/schedule-set-ampm", methods=["GET","POST"])
+def ivr_schedule_set_ampm():
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    h     = int(request.args.get("h", 0))
+    m     = int(request.args.get("m", 0))
+    day   = int(request.args.get("day", 0))
+    if digit == "2":  # PM
+        if h != 12: h += 12
+    else:  # AM
+        if h == 12: h = 0
+    set_day_schedule(day, h, m)
+    ampm = "PM" if digit == "2" else "AM"
+    h12  = h % 12 or 12
+    day_name = DAYS_SHORT[day]
+    return jsonify([
+        _polly_talk(f"Schedule set. {day_name} at {h12}:{str(m).zfill(2)} {ampm}."),
+        *_ivr_main_menu()
+    ])
+
+@app.route("/ivr/schedule-clear-day", methods=["GET","POST"])
+def ivr_schedule_clear_day():
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    try:
+        day = int(digit) - 1
+        if not 0 <= day <= 6: raise ValueError()
+    except:
+        return jsonify([_polly_talk("Invalid day."), *_ivr_schedule_menu()])
+    clear_day_schedule(day)
+    return jsonify([
+        _polly_talk(f"Schedule cleared for {DAYS_SHORT[day]}."),
+        *_ivr_main_menu()
+    ])
+
+# ── IVR MEMBERS ───────────────────────────────────────────────────────────────
+
+def _ivr_members_menu():
+    members = get_members()
+    active  = [m for m in members if not m["paused"]]
+    return [
+        _polly_talk(f"You have {len(members)} members, {len(active)} active. Press 1 to add a member. Press 2 to pause a member. Press 3 to unpause a member. Press 0 to return to main menu."),
+        {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+         "eventUrl": [f"{BASE_URL}/ivr/members-action"]}
+    ]
+
+@app.route("/ivr/members-action", methods=["GET","POST"])
+def ivr_members_action():
+    data  = request.get_json(silent=True) or request.values.to_dict()
+    digit = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    if digit == "1":
+        return jsonify([
+            _polly_talk("Enter the 10 digit phone number to add, then press pound."),
+            {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 11, "submitOnHash": True, "timeOut": 15},
+             "eventUrl": [f"{BASE_URL}/ivr/members-add"]}
+        ])
+    elif digit == "2":
+        return jsonify([
+            _polly_talk("Enter the 10 digit phone number to pause, then press pound."),
+            {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 11, "submitOnHash": True, "timeOut": 15},
+             "eventUrl": [f"{BASE_URL}/ivr/members-pause"]}
+        ])
+    elif digit == "3":
+        return jsonify([
+            _polly_talk("Enter the 10 digit phone number to unpause, then press pound."),
+            {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 11, "submitOnHash": True, "timeOut": 15},
+             "eventUrl": [f"{BASE_URL}/ivr/members-unpause"]}
+        ])
+    else:
+        return jsonify(_ivr_main_menu())
+
+@app.route("/ivr/members-add", methods=["GET","POST"])
+def ivr_members_add():
+    data   = request.get_json(silent=True) or request.values.to_dict()
+    digits = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    number = _clean(digits)
+    if not number:
+        return jsonify([_polly_talk("Invalid number. Please try again."), *_ivr_members_menu()])
+    add_member(number, source="local")
+    return jsonify([
+        _polly_talk(f"Member added successfully."),
+        *_ivr_main_menu()
+    ])
+
+@app.route("/ivr/members-pause", methods=["GET","POST"])
+def ivr_members_pause():
+    data   = request.get_json(silent=True) or request.values.to_dict()
+    digits = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    number = _clean(digits)
+    if not number or not is_approved_member(number):
+        return jsonify([_polly_talk("Number not found."), *_ivr_members_menu()])
+    set_member_paused(number, True)
+    return jsonify([_polly_talk("Member paused."), *_ivr_main_menu()])
+
+@app.route("/ivr/members-unpause", methods=["GET","POST"])
+def ivr_members_unpause():
+    data   = request.get_json(silent=True) or request.values.to_dict()
+    digits = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    number = _clean(digits)
+    if not number or not is_approved_member(number):
+        return jsonify([_polly_talk("Number not found."), *_ivr_members_menu()])
+    set_member_paused(number, False)
+    return jsonify([_polly_talk("Member unpaused."), *_ivr_main_menu()])
+
+# ── IVR CHANGE PIN ────────────────────────────────────────────────────────────
+
+@app.route("/ivr/change-pin", methods=["GET","POST"])
+def ivr_change_pin():
+    data   = request.get_json(silent=True) or request.values.to_dict()
+    digits = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    if len(digits) != 4 or not digits.isdigit():
+        return jsonify([_polly_talk("Invalid PIN. Must be 4 digits."), *_ivr_main_menu()])
+    set_admin_pin(digits)
+    return jsonify([_polly_talk("PIN updated successfully."), *_ivr_main_menu()])
+
 # ── PWA ───────────────────────────────────────────────────────────────────────
 
 @app.route("/manifest.json")
@@ -2012,6 +2293,27 @@ def db_set_pending(n):
     except Exception as e:
         print(f"[db_set_pending] error: {e}", flush=True)
 
+def db_add_confirmed(uuid, number, name):
+    """Add a confirmed participant to DB so it survives restarts."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""UPDATE active_calls SET status='confirmed' WHERE uuid=%s""", (uuid,))
+            conn.commit()
+    except Exception as e:
+        print(f"[db_add_confirmed] error: {e}", flush=True)
+
+def db_get_confirmed():
+    """Get all confirmed participants from DB."""
+    try:
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT uuid, number, name FROM active_calls WHERE status='confirmed'")
+                return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"[db_get_confirmed] error: {e}", flush=True)
+        return []
+
 def db_decrement_pending(uuid):
     """Atomically decrement pending if uuid not already counted. Returns new pending value."""
     try:
@@ -2090,6 +2392,22 @@ threading.Thread(target=_startup_sync, daemon=True).start()
 threading.Thread(target=_startup_restore_recording, daemon=True).start()
 # Pre-warm Polly cache for common messages
 threading.Thread(target=_pregenerate_polly, daemon=True).start()
+
+def _startup_resume_conference():
+    """If a conference was mid-run when we restarted, resume the summary thread."""
+    time.sleep(10)  # wait for everything to initialize
+    db_state = db_get_conference_state()
+    if not db_state.get("running") and not db_state.get("summary_fired") and not db_state.get("conference_active"):
+        confirmed = db_get_confirmed()
+        if confirmed:
+            print(f"[startup] Resuming summary for {len(confirmed)} confirmed participants", flush=True)
+            with lock:
+                last_run["confirmed"] = confirmed
+                last_run["generation"] = (last_run.get("generation", 0) + 1)
+            if get_setting("announcements_enabled") == "true":
+                threading.Thread(target=_play_summary, daemon=True).start()
+
+threading.Thread(target=_startup_resume_conference, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
