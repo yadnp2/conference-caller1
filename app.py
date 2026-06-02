@@ -442,17 +442,24 @@ def _play_summary():
         with lock:
             current_gen   = last_run.get("generation", 0)
             still_running = last_run.get("running", False)
-            confirmed_now = last_run.get("confirmed", [])
+            confirmed_now = list(last_run.get("confirmed", []))
             n_confirmed   = len(confirmed_now)
-        if waited % 10 == 0 and n_confirmed > 0:
-            print(f"[summary] confirmed list: {[e.get('name') for e in confirmed_now]}", flush=True)
+        # If memory is empty, check DB immediately (handles restart)
+        if n_confirmed == 0:
+            db_confirmed = db_get_confirmed()
+            if db_confirmed:
+                print(f"[summary] Restored {len(db_confirmed)} confirmed from DB at waited={waited}s", flush=True)
+                with lock:
+                    last_run["confirmed"] = db_confirmed
+                confirmed_now = db_confirmed
+                n_confirmed   = len(db_confirmed)
         # Exit if a new conference started
         if current_gen != my_generation:
-            print(f"[summary] New conference started (gen {my_generation}→{current_gen}) — exiting old summary", flush=True)
+            print(f"[summary] New conference started (gen {my_generation}→{current_gen}) — exiting", flush=True)
             return
         elapsed = time.time() - last_answer_time[0]
         if waited % 10 == 0:
-            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} last_run id={id(last_run)} quiet={elapsed:.1f}s", flush=True)
+            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} quiet={elapsed:.1f}s", flush=True)
         if still_running:
             continue
         if n_confirmed == 0:
@@ -784,7 +791,11 @@ def inbound_choice():
             _polly_talk("Recording complete. Goodbye."),
         ])
     elif digit == "9":
-        return redirect(url_for("ivr"))
+        return jsonify([
+            _polly_talk("Welcome to the admin line. Please enter your 4 digit PIN followed by the pound sign."),
+            {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 4, "submitOnHash": True, "timeOut": 10},
+             "eventUrl": [f"{BASE_URL}/ivr/pin"]}
+        ])
     else:
         return jsonify([_polly_talk("Goodbye.")])
 
