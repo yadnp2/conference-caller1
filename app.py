@@ -738,28 +738,52 @@ def answer():
     with lock:
         conf_active = last_run.get("conference_active", False)
 
-    # If conference is over and recording exists, play recording
-    if not conf_active and get_setting("replay_enabled") == "true":
+    # If conference is over — offer recording or admin
+    if not conf_active:
         meta = get_latest_recording_meta()
         disk_exists = os.path.exists(os.path.join(RECORDINGS_DIR, "latest.mp3"))
         has_recording = bool(meta.get("url")) or disk_exists
         print(f"[answer] inbound replay check: conf_active={conf_active} meta_url={bool(meta.get('url'))} disk={disk_exists} has_recording={has_recording}", flush=True)
-        if has_recording:
-            log_call(number, get_name(number), "heard-recording")
+        if has_recording and get_setting("replay_enabled") == "true":
             return jsonify([
-                _polly_talk(f"The conference has ended. Playing the recording from {meta.get('date','the last session')}."),
-                {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/audio"], "level": 0},
-                _polly_talk("Recording complete. Goodbye."),
+                _polly_talk("Press 1 to hear the recording. Press 9 for admin access."),
+                {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+                 "eventUrl": [f"{BASE_URL}/inbound-choice?number={number}"]}
+            ])
+        else:
+            return jsonify([
+                _polly_talk("The conference has not started yet. Press 9 for admin access, or hang up to wait."),
+                {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 8},
+                 "eventUrl": [f"{BASE_URL}/inbound-choice?number={number}"]}
             ])
 
     # Log as inbound-pending (will update to joined or missed in join-press)
     log_call(number, get_name(number), "inbound-pending")
-    # Conference is active or no recording — join live
+    # Conference is active — join live
     return jsonify([
         _polly_talk("Press 1 to join the Shmiras HaLashon conference."),
         {"action": "input", "type": ["dtmf"], "dtmf": {"maxDigits": 1, "timeOut": 6},
          "eventUrl": [f"{BASE_URL}/join-press"]},
     ])
+
+@app.route("/inbound-choice", methods=["GET","POST"])
+def inbound_choice():
+    data   = request.get_json(silent=True) or request.values.to_dict()
+    digit  = (data.get("dtmf") or {}).get("digits","") or data.get("digits","")
+    number = request.args.get("number","")
+    if digit == "1":
+        meta = get_latest_recording_meta()
+        if number:
+            log_call(number, get_name(number), "heard-recording")
+        return jsonify([
+            _polly_talk(f"Playing the recording from {meta.get('date','the last session')}."),
+            {"action": "stream", "streamUrl": [f"{BASE_URL}/recordings/audio"], "level": 0},
+            _polly_talk("Recording complete. Goodbye."),
+        ])
+    elif digit == "9":
+        return redirect(url_for("ivr"))
+    else:
+        return jsonify([_polly_talk("Goodbye.")])
 
 @app.route("/join-press", methods=["GET","POST"])
 def join_press():
