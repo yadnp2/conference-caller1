@@ -442,14 +442,17 @@ def _play_summary():
         with lock:
             current_gen   = last_run.get("generation", 0)
             still_running = last_run.get("running", False)
-            n_confirmed   = len(last_run.get("confirmed", []))
+            confirmed_now = last_run.get("confirmed", [])
+            n_confirmed   = len(confirmed_now)
+        if waited % 10 == 0 and n_confirmed > 0:
+            print(f"[summary] confirmed list: {[e.get('name') for e in confirmed_now]}", flush=True)
         # Exit if a new conference started
         if current_gen != my_generation:
             print(f"[summary] New conference started (gen {my_generation}→{current_gen}) — exiting old summary", flush=True)
             return
         elapsed = time.time() - last_answer_time[0]
         if waited % 10 == 0:
-            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} quiet={elapsed:.1f}s", flush=True)
+            print(f"[summary] waited={waited}s running={still_running} confirmed={n_confirmed} last_run id={id(last_run)} quiet={elapsed:.1f}s", flush=True)
         if still_running:
             continue
         if n_confirmed == 0:
@@ -712,7 +715,7 @@ def answer():
             if not any(e["uuid"] == uuid for e in last_run["confirmed"]):
                 last_run["confirmed"].append({"uuid": uuid, "number": number, "name": name})
                 db_add_confirmed(uuid, number, name)
-                print(f"[answer] confirmed now has {len(last_run['confirmed'])}: {[e['name'] for e in last_run['confirmed']]}", flush=True)
+                print(f"[answer] confirmed now has {len(last_run['confirmed'])}: {[e['name'] for e in last_run['confirmed']]} last_run id={id(last_run)}", flush=True)
             # Decrement pending only once
             if uuid not in answered_uuids:
                 answered_uuids.add(uuid)
